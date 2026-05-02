@@ -1,0 +1,31 @@
+# Local config and state (defensive — user state lives in ~/.translate/, never inside repo)
+.env
+.env.*
+**/config.json
+.translate/
+~/.translate/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
