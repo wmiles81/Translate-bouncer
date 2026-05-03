@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { afterEach, beforeEach, vi } from "vitest";
 import BookListRoute from "./views/BookListRoute";
 import BookViewRoute from "./views/BookViewRoute";
 import ChapterRoute from "./views/ChapterRoute";
@@ -17,6 +18,31 @@ function renderAt(path: string) {
     </MemoryRouter>
   );
 }
+
+beforeEach(() => {
+  // Stub EventSource so useEvents doesn't throw in jsdom
+  (globalThis as unknown as { EventSource: unknown }).EventSource = class {
+    onmessage: unknown = null;
+    onerror: unknown = null;
+    close() {}
+  };
+  // Stub fetch so hooks don't reject with network errors
+  global.fetch = vi.fn((url) => {
+    const u = String(url);
+    if (u === "/books" || u.startsWith("/books/")) {
+      return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+    }
+    if (u === "/models") return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+    if (u === "/settings") return Promise.resolve(new Response(JSON.stringify({
+      openrouter_api_key: "",
+      default_models: { editor: "", reviewer: "" },
+      ingestion: { heading_style: "Heading 1", fallback_patterns: [] },
+    }), { status: 200 }));
+    return Promise.resolve(new Response(JSON.stringify(null), { status: 200 }));
+  }) as unknown as typeof fetch;
+});
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("App routes", () => {
   it("renders BookListRoute at /", () => {
