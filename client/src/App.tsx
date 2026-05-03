@@ -1,3 +1,18 @@
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import BookListRoute from "./views/BookListRoute";
+import BookViewRoute from "./views/BookViewRoute";
+import ChapterRoute from "./views/ChapterRoute";
+import SettingsRoute from "./views/SettingsRoute";
+
 export default function App() {
-  return <div className="p-4">Translate</div>;
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<BookListRoute />} />
+        <Route path="/book/:slug" element={<BookViewRoute />} />
+        <Route path="/book/:slug/chapter/:n" element={<ChapterRoute />} />
+        <Route path="/settings" element={<SettingsRoute />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
