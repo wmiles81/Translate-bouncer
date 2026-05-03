@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import ModelBrowser from "../components/ModelBrowser";
+import PromptEditor from "../components/PromptEditor";
 import { useModels } from "../hooks/useModels";
 import { useSettings } from "../hooks/useSettings";
-import PromptEditor from "../components/PromptEditor";
 
 export default function SettingsRoute() {
   const { settings, save, loading, error } = useSettings();
@@ -13,6 +14,7 @@ export default function SettingsRoute() {
   const [reviewerDefault, setReviewerDefault] = useState<string | null>(null);
   const [headingStyle, setHeadingStyle] = useState<string | null>(null);
   const [patternsText, setPatternsText] = useState<string | null>(null);
+  const [browsing, setBrowsing] = useState<"editor" | "reviewer" | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -113,25 +115,41 @@ export default function SettingsRoute() {
         <h2 className="text-sm font-semibold uppercase text-gray-500">Default models</h2>
         <label className="block">
           <span className="text-sm font-medium">Editor</span>
-          <select
-            value={e}
-            onChange={(ev) => setEditorDefault(ev.target.value)}
-            className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
-          >
-            <option value="">— select —</option>
-            {models.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
+          <div className="mt-1 flex gap-2">
+            <input
+              type="text"
+              value={e}
+              onChange={(ev) => setEditorDefault(ev.target.value)}
+              placeholder="anthropic/claude-sonnet-4"
+              className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => setBrowsing("editor")}
+              className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
+            >
+              Browse…
+            </button>
+          </div>
         </label>
         <label className="block">
           <span className="text-sm font-medium">Reviewer</span>
-          <select
-            value={r}
-            onChange={(ev) => setReviewerDefault(ev.target.value)}
-            className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
-          >
-            <option value="">— select —</option>
-            {models.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
+          <div className="mt-1 flex gap-2">
+            <input
+              type="text"
+              value={r}
+              onChange={(ev) => setReviewerDefault(ev.target.value)}
+              placeholder="openai/gpt-5"
+              className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => setBrowsing("reviewer")}
+              className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
+            >
+              Browse…
+            </button>
+          </div>
         </label>
       </section>
 
@@ -174,6 +192,18 @@ export default function SettingsRoute() {
         <PromptEditor kind="editor" />
         <PromptEditor kind="reviewer" />
       </section>
+
+      {browsing && (
+        <ModelBrowser
+          initialValue={browsing === "editor" ? e : r}
+          onCancel={() => setBrowsing(null)}
+          onSelect={(id) => {
+            if (browsing === "editor") setEditorDefault(id);
+            else setReviewerDefault(id);
+            setBrowsing(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -38,7 +38,7 @@ describe("ChapterRoute", () => {
           suggestions: null,
         }), { status: 200 }));
       }
-      if (u === "/models") return Promise.resolve(new Response(JSON.stringify(["m1", "m2"]), { status: 200 }));
+      if (u === "/models") return Promise.resolve(new Response(JSON.stringify([{ id: "m1" }, { id: "m2" }]), { status: 200 }));
       if (u === "/settings") return Promise.resolve(new Response(JSON.stringify({
         openrouter_api_key: "k",
         default_models: { editor: "m1", reviewer: "m2" },

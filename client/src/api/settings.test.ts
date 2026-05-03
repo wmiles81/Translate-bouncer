@@ -50,10 +50,13 @@ describe("settings api", () => {
 
   it("getModels calls GET /models", async () => {
     const mock = (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      new Response(JSON.stringify(["a", "b"]), { status: 200 })
+      new Response(JSON.stringify([
+        { id: "a", name: "A" },
+        { id: "b", name: "B" },
+      ]), { status: 200 })
     );
-    const ids = await getModels();
+    const out = await getModels();
     expect(mock.mock.calls[0][0]).toBe("/models");
-    expect(ids).toEqual(["a", "b"]);
+    expect(out.map(m => m.id)).toEqual(["a", "b"]);
   });
 });

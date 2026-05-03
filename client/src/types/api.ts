@@ -104,6 +104,20 @@ export type AppEvent =
   | { type: "error"; text: string }
   | { type: "stop" };
 
+// OpenRouter model metadata returned by GET /models.
+// Fields are optional because OpenRouter is inconsistent across models.
+export interface Model {
+  id: string;
+  name?: string;
+  created?: number;
+  context_length?: number;
+  pricing?: {
+    prompt?: string;
+    completion?: string;
+  };
+  supported_parameters?: string[];
+}
+
 // Parsed-doc shape used by panes (mirrors server/docx_io.py)
 export type ParagraphStyle = "normal" | `heading-${1 | 2 | 3 | 4 | 5 | 6}`;
 export interface ParsedParagraph {

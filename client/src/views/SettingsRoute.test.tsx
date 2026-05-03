@@ -15,7 +15,8 @@ describe("SettingsRoute", () => {
         }), { status: 200 }));
       }
       if (u === "/models") return Promise.resolve(new Response(JSON.stringify([
-        "anthropic/claude-sonnet-4", "openai/gpt-5",
+        { id: "anthropic/claude-sonnet-4", name: "Claude Sonnet 4" },
+        { id: "openai/gpt-5", name: "GPT-5" },
       ]), { status: 200 }));
       if (u === "/prompts/editor" || u === "/prompts/reviewer") {
         return Promise.resolve(new Response(JSON.stringify({
