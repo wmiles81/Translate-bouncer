@@ -6,7 +6,7 @@ import PromptEditor from "../components/PromptEditor";
 
 export default function SettingsRoute() {
   const { settings, save, loading, error } = useSettings();
-  const { models, refresh: refreshModels } = useModels();
+  const { models, refresh: refreshModels, error: modelsError } = useModels();
 
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [editorDefault, setEditorDefault] = useState<string | null>(null);
@@ -15,6 +15,8 @@ export default function SettingsRoute() {
   const [patternsText, setPatternsText] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   if (!settings && loading) return <div data-testid="settings-route" className="p-6">Loading…</div>;
   if (error) return <div data-testid="settings-route" className="p-6 text-red-600">{error.message}</div>;
@@ -44,6 +46,32 @@ export default function SettingsRoute() {
     }
   };
 
+  // Refresh the model list. The /models endpoint reads the API key from the
+  // server's config file, so we save the current key first if it's been edited
+  // but not yet persisted; otherwise the server returns 400 and the user sees
+  // nothing change.
+  const handleRefreshModels = async () => {
+    setRefreshError(null);
+    setRefreshing(true);
+    try {
+      if (apiKey !== null && apiKey !== settings.openrouter_api_key) {
+        await save({
+          openrouter_api_key: k,
+          default_models: { editor: e, reviewer: r },
+          ingestion: {
+            heading_style: h,
+            fallback_patterns: p.split("\n").map((s) => s.trim()).filter(Boolean),
+          },
+        });
+      }
+      refreshModels();
+    } catch (err) {
+      setRefreshError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <div data-testid="settings-route" className="mx-auto max-w-2xl p-6">
       <header className="mb-6 flex items-center justify-between">
@@ -62,13 +90,23 @@ export default function SettingsRoute() {
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-sm"
           />
         </label>
-        <button
-          type="button"
-          onClick={refreshModels}
-          className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
-        >
-          Refresh model list
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleRefreshModels}
+            disabled={refreshing}
+            className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
+          >
+            {refreshing ? "Refreshing…" : "Refresh model list"}
+          </button>
+          {modelsError && !refreshError && (
+            <span className="text-sm text-red-600">{modelsError.message}</span>
+          )}
+          {refreshError && <span className="text-sm text-red-600">{refreshError}</span>}
+          {!refreshError && !modelsError && models.length > 0 && (
+            <span className="text-sm text-gray-500">{models.length} models</span>
+          )}
+        </div>
       </section>
 
       <section className="mb-6 space-y-3">
