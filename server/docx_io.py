@@ -24,7 +24,9 @@ class ParsedDoc(BaseModel):
 
 
 def _style_name(p) -> str:
-    name = (p.style.name or "").lower()
+    style = getattr(p, "style", None)
+    raw = getattr(style, "name", None) if style is not None else None
+    name = (raw or "").lower()
     if name.startswith("heading "):
         try:
             level = int(name.split(" ")[1])
