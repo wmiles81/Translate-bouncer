@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { finalizeChapter, runEditorRound, runReviewerRound } from "../api/chapters";
+import { ApiError } from "../api/client";
 import EnglishPane from "../components/EnglishPane";
 import StatusBar from "../components/StatusBar";
 import SuggestionsPane from "../components/SuggestionsPane";
@@ -61,6 +62,21 @@ export default function ChapterRoute() {
     }, [])
   );
 
+  // Pull the most useful human-readable message out of an unknown error.
+  // Our server's typed error responses look like { detail: { message, kind } };
+  // ApiError stores .detail. Plain strings come through as detail too.
+  function errorMessage(err: unknown): string {
+    if (err instanceof ApiError) {
+      const d = err.detail as unknown;
+      if (typeof d === "string") return `HTTP ${err.status}: ${d}`;
+      if (d && typeof d === "object" && "message" in (d as Record<string, unknown>)) {
+        return `HTTP ${err.status}: ${(d as { message: string }).message}`;
+      }
+      return `HTTP ${err.status}`;
+    }
+    return err instanceof Error ? err.message : String(err);
+  }
+
   const handleContinue = async () => {
     setBusy(true);
     setBusySince(Date.now());
@@ -69,7 +85,7 @@ export default function ChapterRoute() {
       await runReviewerRound(slug, n, reviewerModel);
       await chapter.refresh();
     } catch (err) {
-      setStatus(`⚠ ${err instanceof Error ? err.message : String(err)}`);
+      setStatus(`⚠ ${errorMessage(err)}`);
     } finally {
       setBusy(false);
       setBusySince(null);
@@ -84,7 +100,7 @@ export default function ChapterRoute() {
       await chapter.refresh();
       setStatus("✓ Chapter finalized");
     } catch (err) {
-      setStatus(`⚠ ${err instanceof Error ? err.message : String(err)}`);
+      setStatus(`⚠ ${errorMessage(err)}`);
     } finally {
       setBusy(false);
       setBusySince(null);

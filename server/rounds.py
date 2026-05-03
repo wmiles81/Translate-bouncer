@@ -98,6 +98,11 @@ async def run_editor_pass(
     system = render_editor_prompt(template=editor_prompt_template, target_code=target_code)
     raw = await client.chat(model=model, system=system, user=user_msg, on_retry=on_retry)
 
+    cdir = _chapter_dir(slug, chapter_n)
+    # Save the raw response immediately so a parse failure leaves something on
+    # disk to debug. Removed/overwritten on success below.
+    (cdir / f"round-{round_n}-editor.raw.txt").write_text(raw)
+
     try:
         edited = parse_target_lines(
             raw,
@@ -105,9 +110,10 @@ async def run_editor_pass(
             expected_count=len(en_doc.paragraphs),
         )
     except PayloadParseError as exc:
-        raise RecoverableError(str(exc)) from exc
+        raise RecoverableError(
+            f"{exc} (raw response saved to round-{round_n}-editor.raw.txt)"
+        ) from exc
 
-    cdir = _chapter_dir(slug, chapter_n)
     write_docx(edited, cdir / f"round-{round_n}-editor.docx")
     (cdir / f"round-{round_n}-editor.json").write_text(edited.model_dump_json(indent=2))
     return edited
