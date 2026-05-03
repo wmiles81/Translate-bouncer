@@ -70,6 +70,18 @@ export interface ReviewerResult {
   raw_response: string;
 }
 
+export interface RoundDialog {
+  n: number;
+  editor_model: string;
+  editor_raw: string | null;
+  reviewer_model: string;
+  reviewer_raw: string | null;
+  suggestions: Suggestion[] | null;
+}
+export interface ChapterDialog {
+  rounds: RoundDialog[];
+}
+
 // /settings shape
 export interface DefaultModels {
   editor: string;
@@ -98,10 +110,21 @@ export interface PromptFile {
 }
 
 // SSE event shape (server side publishes objects with `type` plus extras)
+export type Stage = "editor" | "reviewer";
+export type Phase = "sent" | "returned" | "retry";
 export type AppEvent =
-  | { type: "status"; text: string }
-  | { type: "round_complete"; round: number; stage: "editor" | "reviewer" }
-  | { type: "error"; text: string }
+  | {
+      type: "status";
+      text: string;
+      chapter?: number;
+      round?: number;
+      stage?: Stage;
+      phase?: Phase;
+      model?: string;
+      source?: string;
+    }
+  | { type: "round_complete"; round: number; stage: Stage; chapter?: number }
+  | { type: "error"; text: string; chapter?: number; round?: number; stage?: Stage }
   | { type: "stop" };
 
 // OpenRouter model metadata returned by GET /models.

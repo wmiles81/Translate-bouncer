@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { finalizeChapter, runEditorRound, runReviewerRound } from "../api/chapters";
 import { ApiError } from "../api/client";
 import EnglishPane from "../components/EnglishPane";
-import StatusBar from "../components/StatusBar";
+import StatusBar, { type ActivityEntry } from "../components/StatusBar";
 import SuggestionsPane from "../components/SuggestionsPane";
 import TopBar from "../components/TopBar";
 import WorkingPane from "../components/WorkingPane";
@@ -26,9 +26,22 @@ export default function ChapterRoute() {
   const [editorModel, setEditorModel] = useState("");
   const [reviewerModel, setReviewerModel] = useState("");
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("Idle");
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [busySince, setBusySince] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
+
+  const appendActivity = useCallback((text: string, kind: ActivityEntry["kind"]) => {
+    setActivity((prev) => {
+      const next: ActivityEntry = {
+        id: prev.length > 0 ? prev[prev.length - 1].id + 1 : 1,
+        ts: Date.now(),
+        text,
+        kind,
+      };
+      const out = [...prev, next];
+      return out.length > 200 ? out.slice(out.length - 200) : out;
+    });
+  }, []);
 
   // Tick the elapsed-time counter while a round is running so the user can
   // see something is alive even when the model is slow to respond.
@@ -56,10 +69,14 @@ export default function ChapterRoute() {
 
   useEvents(
     useCallback((e) => {
-      if (e.type === "status") setStatus(e.text);
-      else if (e.type === "round_complete") setStatus(`✓ Round ${e.round} ${e.stage} complete`);
-      else if (e.type === "error") setStatus(`⚠ ${e.text}`);
-    }, [])
+      if (e.type === "status") appendActivity(e.text, "status");
+      else if (e.type === "round_complete")
+        appendActivity(
+          `✓ Ch ${e.chapter ?? "?"} R${e.round} ${e.stage} complete`,
+          "complete",
+        );
+      else if (e.type === "error") appendActivity(`⚠ ${e.text}`, "error");
+    }, [appendActivity])
   );
 
   // Pull the most useful human-readable message out of an unknown error.
@@ -85,7 +102,7 @@ export default function ChapterRoute() {
       await runReviewerRound(slug, n, reviewerModel);
       await chapter.refresh();
     } catch (err) {
-      setStatus(`⚠ ${errorMessage(err)}`);
+      appendActivity(`⚠ ${errorMessage(err)}`, "error");
     } finally {
       setBusy(false);
       setBusySince(null);
@@ -98,9 +115,9 @@ export default function ChapterRoute() {
     try {
       await finalizeChapter(slug, n);
       await chapter.refresh();
-      setStatus("✓ Chapter finalized");
+      appendActivity(`✓ Ch ${n} finalized`, "complete");
     } catch (err) {
-      setStatus(`⚠ ${errorMessage(err)}`);
+      appendActivity(`⚠ ${errorMessage(err)}`, "error");
     } finally {
       setBusy(false);
       setBusySince(null);
@@ -127,11 +144,17 @@ export default function ChapterRoute() {
       <main className="grid grid-cols-3 overflow-hidden">
         <EnglishPane doc={chapter.enDoc} />
         <WorkingPane doc={chapter.workingDoc} prevDoc={chapter.prevDoc} roundN={chapter.meta.current_round} />
-        <SuggestionsPane result={chapter.suggestions} />
+        <SuggestionsPane
+          result={chapter.suggestions}
+          bookSlug={slug}
+          chapterN={n}
+          currentRound={chapter.meta.current_round}
+        />
       </main>
       <StatusBar
-        status={busy && elapsed > 0 ? `${status} (${elapsed}s)` : status}
+        activity={activity}
         busy={busy}
+        elapsed={elapsed}
         canFinalize={chapter.meta.current_round > 0 && chapter.meta.status !== "done"}
         onContinue={handleContinue}
         onDone={handleDone}

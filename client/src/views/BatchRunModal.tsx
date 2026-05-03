@@ -1,9 +1,19 @@
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import ModelPicker from "../components/ModelPicker";
+import type { ActivityEntry } from "../components/StatusBar";
+import { useEvents } from "../hooks/useEvents";
 import { useModels } from "../hooks/useModels";
 import { useSettings } from "../hooks/useSettings";
 import { runBatch, type BatchEvent } from "../lib/batchRunner";
 import type { BookMeta, ChapterEntry } from "../types/api";
+
+function formatTime(ts: number): string {
+  const d = new Date(ts);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
+}
 
 interface Props {
   book: BookMeta;
@@ -26,8 +36,43 @@ export default function BatchRunModal({ book, onClose, onCompleted }: Props) {
 
   const [running, setRunning] = useState(false);
   const [events, setEvents] = useState<BatchEvent[]>([]);
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [summary, setSummary] = useState<{ completed: number; errors: number; stopped: boolean } | null>(null);
   const stopRef = useRef(false);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  const appendActivity = useCallback((text: string, kind: ActivityEntry["kind"]) => {
+    setActivity((prev) => {
+      const next: ActivityEntry = {
+        id: prev.length > 0 ? prev[prev.length - 1].id + 1 : 1,
+        ts: Date.now(),
+        text,
+        kind,
+      };
+      const out = [...prev, next];
+      return out.length > 200 ? out.slice(out.length - 200) : out;
+    });
+  }, []);
+
+  // Subscribe to server SSE so we get the same per-call activity stream the
+  // chapter workspace shows. We keep the modal-level batch progress events
+  // separate from these per-call detail events.
+  useEvents(
+    useCallback((e) => {
+      if (e.type === "status") appendActivity(e.text, "status");
+      else if (e.type === "round_complete")
+        appendActivity(
+          `✓ Ch ${e.chapter ?? "?"} R${e.round} ${e.stage} complete`,
+          "complete",
+        );
+      else if (e.type === "error") appendActivity(`⚠ ${e.text}`, "error");
+    }, [appendActivity]),
+  );
+
+  useEffect(() => {
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [activity]);
 
   function selectedChapters(): ChapterEntry[] {
     let chs = book.chapters.filter((c) => c.n >= fromN && c.n <= toN);
@@ -42,6 +87,7 @@ export default function BatchRunModal({ book, onClose, onCompleted }: Props) {
     if (chs.length === 0) return;
     stopRef.current = false;
     setEvents([]);
+    setActivity([]);
     setSummary(null);
     setRunning(true);
     try {
@@ -202,12 +248,37 @@ export default function BatchRunModal({ book, onClose, onCompleted }: Props) {
         )}
 
         {(running || summary) && (
-          <div className="flex-1 overflow-y-auto p-4 text-sm">
+          <div className="flex flex-1 flex-col overflow-hidden p-4 text-sm">
             <p className="mb-2 text-base">{statusLine}</p>
-            <p className="text-xs text-gray-500">
+            <p className="mb-2 text-xs text-gray-500">
               Completed: <strong>{completed}</strong> · Errors: <strong>{errors.length}</strong>
               {summary && summary.stopped && <> · stopped by user</>}
             </p>
+
+            <div
+              ref={logRef}
+              className="mb-3 flex-1 min-h-0 overflow-y-auto rounded border border-gray-200 bg-gray-50 px-2 py-1 font-mono text-xs"
+            >
+              {activity.length === 0 ? (
+                <div className="text-gray-400">Waiting for activity…</div>
+              ) : (
+                activity.map((ev) => (
+                  <div
+                    key={ev.id}
+                    className={
+                      ev.kind === "error"
+                        ? "text-red-600"
+                        : ev.kind === "complete"
+                          ? "text-green-700"
+                          : "text-gray-700"
+                    }
+                  >
+                    <span className="text-gray-400">{formatTime(ev.ts)}</span> {ev.text}
+                  </div>
+                ))
+              )}
+            </div>
+
             {errors.length > 0 && (
               <details className="mt-3 rounded border border-red-200 bg-red-50 p-2">
                 <summary className="cursor-pointer text-sm font-medium text-red-700">

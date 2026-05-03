@@ -97,7 +97,25 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
     editor_prompt = load_prompts(PromptKind.EDITOR)
     editor_template = next(v.text for v in editor_prompt.versions if v.id == editor_prompt.current)
 
-    EVENT_BUS.publish({"type": "status", "text": f"Round {next_round} — calling Editor ({req.model})..."})
+    # Source description: round 0 = original translation, otherwise the previous editor output.
+    src_round = cm.current_round  # the working doc's round number we feed to the editor
+    src_desc = (
+        "original translation"
+        if src_round == 0
+        else f"round {src_round} editor output"
+    )
+    if suggestions:
+        src_desc += f" + {len(suggestions)} reviewer suggestions"
+    EVENT_BUS.publish({
+        "type": "status",
+        "chapter": n,
+        "round": next_round,
+        "stage": "editor",
+        "phase": "sent",
+        "model": req.model,
+        "source": src_desc,
+        "text": f"Ch {n} R{next_round} → Editor ({req.model}) · source: {src_desc}",
+    })
     try:
         await run_editor_pass(
             client=client,
@@ -111,19 +129,32 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
             editor_prompt_template=editor_template,
             prior_reviewer_suggestions=suggestions,
             model=req.model,
-            on_retry=lambda attempt, total: EVENT_BUS.publish(
-                {"type": "status", "text": f"Round {next_round} — retry {attempt}/{total}..."}
-            ),
+            on_retry=lambda attempt, total: EVENT_BUS.publish({
+                "type": "status",
+                "chapter": n,
+                "round": next_round,
+                "stage": "editor",
+                "phase": "retry",
+                "text": f"Ch {n} R{next_round} Editor — retry {attempt}/{total}...",
+            }),
         )
     except RecoverableError as exc:
-        EVENT_BUS.publish({"type": "error", "text": str(exc)})
+        EVENT_BUS.publish({"type": "error", "chapter": n, "round": next_round, "stage": "editor", "text": str(exc)})
         raise HTTPException(status_code=422, detail={"message": str(exc), "kind": "recoverable"})
     except TransientError as exc:
-        EVENT_BUS.publish({"type": "error", "text": str(exc)})
+        EVENT_BUS.publish({"type": "error", "chapter": n, "round": next_round, "stage": "editor", "text": str(exc)})
         raise HTTPException(status_code=502, detail={"message": str(exc), "kind": "transient"})
     except ConfigurationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    EVENT_BUS.publish({"type": "round_complete", "round": next_round, "stage": "editor"})
+    EVENT_BUS.publish({
+        "type": "status",
+        "chapter": n,
+        "round": next_round,
+        "stage": "editor",
+        "phase": "returned",
+        "text": f"Ch {n} R{next_round} ← Editor returned",
+    })
+    EVENT_BUS.publish({"type": "round_complete", "round": next_round, "stage": "editor", "chapter": n})
 
     cm.current_round = next_round
     cm.status = ChapterStatus.IN_PROGRESS
@@ -151,29 +182,54 @@ async def post_round_reviewer(slug: str, n: int, req: RoundRequest) -> dict:
     reviewer_prompt = load_prompts(PromptKind.REVIEWER)
     reviewer_template = next(v.text for v in reviewer_prompt.versions if v.id == reviewer_prompt.current)
 
-    EVENT_BUS.publish({"type": "status", "text": f"Round {cm.current_round} — calling Reviewer ({req.model})..."})
+    review_round = cm.current_round
+    src_desc = f"round {review_round} editor output"
+    EVENT_BUS.publish({
+        "type": "status",
+        "chapter": n,
+        "round": review_round,
+        "stage": "reviewer",
+        "phase": "sent",
+        "model": req.model,
+        "source": src_desc,
+        "text": f"Ch {n} R{review_round} → Reviewer ({req.model}) · source: {src_desc}",
+    })
     try:
         result: ReviewerResult = await run_reviewer_pass(
             client=client,
             slug=slug,
             chapter_n=n,
-            round_n=cm.current_round,
+            round_n=review_round,
             en_doc=en_doc,
             target_doc=target_doc,
             source_code=bm.language_pair.from_,
             target_code=bm.language_pair.to,
             reviewer_prompt_template=reviewer_template,
             model=req.model,
-            on_retry=lambda attempt, total: EVENT_BUS.publish(
-                {"type": "status", "text": f"Round {cm.current_round} — retry {attempt}/{total}..."}
-            ),
+            on_retry=lambda attempt, total: EVENT_BUS.publish({
+                "type": "status",
+                "chapter": n,
+                "round": review_round,
+                "stage": "reviewer",
+                "phase": "retry",
+                "text": f"Ch {n} R{review_round} Reviewer — retry {attempt}/{total}...",
+            }),
         )
     except TransientError as exc:
-        EVENT_BUS.publish({"type": "error", "text": str(exc)})
+        EVENT_BUS.publish({"type": "error", "chapter": n, "round": review_round, "stage": "reviewer", "text": str(exc)})
         raise HTTPException(status_code=502, detail={"message": str(exc), "kind": "transient"})
     except ConfigurationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    EVENT_BUS.publish({"type": "round_complete", "round": cm.current_round, "stage": "reviewer"})
+    n_sugg = len(result.suggestions) if hasattr(result, "suggestions") and result.suggestions else 0
+    EVENT_BUS.publish({
+        "type": "status",
+        "chapter": n,
+        "round": review_round,
+        "stage": "reviewer",
+        "phase": "returned",
+        "text": f"Ch {n} R{review_round} ← Reviewer returned {n_sugg} suggestion{'s' if n_sugg != 1 else ''}",
+    })
+    EVENT_BUS.publish({"type": "round_complete", "round": review_round, "stage": "reviewer", "chapter": n})
     cm.models.reviewer = req.model
     cm.prompts_used.reviewer_version = reviewer_prompt.current
     # Update the round's reviewer_completed_at.
@@ -192,6 +248,39 @@ def post_finalize(slug: str, n: int) -> dict:
     except FinalizeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return load_chapter_meta(slug, n=n).model_dump()
+
+
+@router.get("/books/{slug}/chapter/{n}/dialog")
+def get_chapter_dialog(slug: str, n: int) -> dict:
+    """Return per-round raw editor/reviewer exchanges for the dialog view."""
+    try:
+        load_book_meta(slug)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"book not found: {slug}")
+    cm = load_chapter_meta(slug, n=n)
+    cdir = book_dir(slug) / "chapters" / f"ch{n:02d}"
+    rounds: list[dict] = []
+    for r in range(1, cm.current_round + 1):
+        editor_raw_p = cdir / f"round-{r}-editor.raw.txt"
+        reviewer_p = cdir / f"round-{r}-reviewer.json"
+        editor_raw = editor_raw_p.read_text() if editor_raw_p.exists() else None
+        reviewer_raw: Optional[str] = None
+        suggestions: Optional[list] = None
+        reviewer_model: Optional[str] = None
+        if reviewer_p.exists():
+            data = json.loads(reviewer_p.read_text())
+            reviewer_raw = data.get("raw_response")
+            suggestions = data.get("suggestions") or []
+            reviewer_model = data.get("model")
+        rounds.append({
+            "n": r,
+            "editor_model": cm.models.editor,
+            "editor_raw": editor_raw,
+            "reviewer_model": reviewer_model or cm.models.reviewer,
+            "reviewer_raw": reviewer_raw,
+            "suggestions": suggestions,
+        })
+    return {"rounds": rounds}
 
 
 @router.get("/books/{slug}/chapter/{n}/docs")
