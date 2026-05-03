@@ -29,3 +29,6 @@ dist-ssr/
 .idea/
 .DS_Store
 *.swp
+
+# Local session/scratch artifacts (created by IDE or external tools)
+Sessions/
