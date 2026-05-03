@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   contextK,
   displayName,
   inputPrice,
   outputPrice,
+  provider,
   supportsTools,
 } from "../lib/modelDisplay";
 import type { Model } from "../types/api";
@@ -35,6 +36,17 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
     };
   }, [open]);
 
+  const sortedModels = useMemo(
+    () =>
+      models.slice().sort((a, b) => {
+        const pa = provider(a);
+        const pb = provider(b);
+        if (pa !== pb) return pa.localeCompare(pb);
+        return displayName(a).localeCompare(displayName(b));
+      }),
+    [models],
+  );
+
   const current = models.find((m) => m.id === value);
   const buttonLabel = current ? displayName(current) : value || "— select —";
 
@@ -57,10 +69,10 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
           role="listbox"
           className="absolute right-0 top-full z-50 mt-1 max-h-96 w-[28rem] overflow-y-auto rounded border border-gray-200 bg-white shadow-lg"
         >
-          {models.length === 0 && (
+          {sortedModels.length === 0 && (
             <p className="px-2 py-2 text-xs text-gray-500">No models loaded</p>
           )}
-          {models.map((m) => {
+          {sortedModels.map((m) => {
             const tools = supportsTools(m);
             const selected = m.id === value;
             return (
@@ -82,7 +94,7 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
                   <span className="ml-2 text-xs text-gray-500">{contextK(m)}</span>
                 </span>
                 <span className="ml-auto whitespace-nowrap font-mono text-xs text-gray-600">
-                  {inputPrice(m)} / {outputPrice(m)} per M
+                  {inputPrice(m)}/{outputPrice(m)}
                 </span>
               </button>
             );

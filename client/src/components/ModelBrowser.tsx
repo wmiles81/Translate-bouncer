@@ -176,7 +176,7 @@ export default function ModelBrowser({ initialValue, onSelect, onCancel }: Props
                       <span className="ml-2 text-xs text-gray-500">{contextK(m)}</span>
                     </span>
                     <span className="ml-auto whitespace-nowrap font-mono text-xs text-gray-600">
-                      {inputPrice(m)} / {outputPrice(m)} per M
+                      {inputPrice(m)}/{outputPrice(m)}
                     </span>
                   </button>
                 </li>

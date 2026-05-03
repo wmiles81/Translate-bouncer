@@ -76,6 +76,21 @@ describe("ModelPicker", () => {
   it("shows pricing in the row", async () => {
     render(<ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: /editor/i }));
-    expect(screen.getByText(/\$3\.00 \/ \$15\.00 per M/)).toBeInTheDocument();
+    expect(screen.getByText("$3.00/$15.00")).toBeInTheDocument();
+  });
+
+  it("sorts models by provider then by display name", async () => {
+    const mixed = [
+      { id: "openai/gpt-5", name: "GPT-5" },
+      { id: "anthropic/claude-sonnet-4", name: "Claude Sonnet 4" },
+      { id: "anthropic/claude-haiku-4-5", name: "Claude Haiku 4.5" },
+      { id: "openai/gpt-5-mini", name: "GPT-5 Mini" },
+    ];
+    render(<ModelPicker label="Editor" value="" models={mixed} onChange={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: /editor/i }));
+    const options = screen.getAllByRole("option");
+    // anthropic comes before openai alphabetically; within each, names sorted ascending.
+    const order = options.map((o) => o.querySelector("span > span")?.textContent);
+    expect(order).toEqual(["Claude Haiku 4.5", "Claude Sonnet 4", "GPT-5", "GPT-5 Mini"]);
   });
 });
