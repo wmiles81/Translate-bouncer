@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import type { IngestRequest } from "../api/books";
+import { pickPath } from "../api/system";
 import { DEFAULT_SOURCE, DEFAULT_TARGET, LANGUAGES } from "../lib/languages";
 
 interface NewBookModalProps {
@@ -8,11 +9,24 @@ interface NewBookModalProps {
   error?: string | null;
 }
 
+const FileIcon = (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+    <path d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V8l-6-6H4zm8 0v6h6" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
+  </svg>
+);
+
+const FolderIcon = (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+    <path d="M2 5a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V5z" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
+  </svg>
+);
+
 export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModalProps) {
   const [translated, setTranslated] = useState("");
   const [english, setEnglish] = useState("");
   const [from, setFrom] = useState(DEFAULT_SOURCE);
   const [to, setTo] = useState(DEFAULT_TARGET);
+  const [picking, setPicking] = useState<string | null>(null);
 
   function cleanPath(s: string): string {
     let v = s.trim();
@@ -20,6 +34,22 @@ export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModal
       v = v.slice(1, -1).trim();
     }
     return v;
+  }
+
+  async function handlePick(
+    field: "translated" | "english",
+    kind: "file" | "folder",
+  ) {
+    const id = `${field}-${kind}`;
+    setPicking(id);
+    try {
+      const { path } = await pickPath(kind);
+      if (!path) return;
+      if (field === "translated") setTranslated(path);
+      else setEnglish(path);
+    } finally {
+      setPicking(null);
+    }
   }
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -47,26 +77,76 @@ export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModal
           </p>
         )}
         <div className="space-y-3">
-          <label className="block">
-            <span className="text-sm font-medium">Translated path</span>
-            <input
-              type="text"
-              value={translated}
-              onChange={(e) => setTranslated(e.target.value)}
-              placeholder="/path/to/translated/book.docx OR folder"
-              className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">English path</span>
-            <input
-              type="text"
-              value={english}
-              onChange={(e) => setEnglish(e.target.value)}
-              placeholder="/path/to/english/book.docx OR folder"
-              className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-sm"
-            />
-          </label>
+          <div>
+            <label htmlFor="translated-path" className="text-sm font-medium">
+              Translated path
+            </label>
+            <div className="mt-1 flex gap-1">
+              <input
+                id="translated-path"
+                type="text"
+                value={translated}
+                onChange={(e) => setTranslated(e.target.value)}
+                placeholder="/path/to/translated/book.docx OR folder"
+                className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => handlePick("translated", "file")}
+                disabled={picking !== null}
+                title="Choose .docx file"
+                aria-label="Choose translated .docx file"
+                className="rounded border border-gray-300 px-2 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {FileIcon}
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePick("translated", "folder")}
+                disabled={picking !== null}
+                title="Choose folder of .docx chapters"
+                aria-label="Choose translated folder"
+                className="rounded border border-gray-300 px-2 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {FolderIcon}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label htmlFor="english-path" className="text-sm font-medium">
+              English path
+            </label>
+            <div className="mt-1 flex gap-1">
+              <input
+                id="english-path"
+                type="text"
+                value={english}
+                onChange={(e) => setEnglish(e.target.value)}
+                placeholder="/path/to/english/book.docx OR folder"
+                className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => handlePick("english", "file")}
+                disabled={picking !== null}
+                title="Choose .docx file"
+                aria-label="Choose English .docx file"
+                className="rounded border border-gray-300 px-2 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {FileIcon}
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePick("english", "folder")}
+                disabled={picking !== null}
+                title="Choose folder of .docx chapters"
+                aria-label="Choose English folder"
+                className="rounded border border-gray-300 px-2 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {FolderIcon}
+              </button>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-sm font-medium">Source language</span>

@@ -11,6 +11,7 @@ export default defineConfig({
       "/models":   "http://localhost:5180",
       "/prompts":  "http://localhost:5180",
       "/books":    "http://localhost:5180",
+      "/system":   "http://localhost:5180",
       "/events":   { target: "http://localhost:5180", changeOrigin: true, ws: false },
     },
   },

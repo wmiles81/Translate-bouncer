@@ -31,6 +31,9 @@ def create_app() -> FastAPI:
     from server.routes import events as events_routes
     app.include_router(events_routes.router)
 
+    from server.routes import system as system_routes
+    app.include_router(system_routes.router)
+
     import os
     from pathlib import Path
 
