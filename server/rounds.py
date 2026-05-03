@@ -92,3 +92,83 @@ async def run_editor_pass(
     write_docx(edited, cdir / f"round-{round_n}-editor.docx")
     (cdir / f"round-{round_n}-editor.json").write_text(edited.model_dump_json(indent=2))
     return edited
+
+
+import re
+from typing import List
+
+from pydantic import BaseModel, Field
+
+from server.state import now_iso
+
+
+class Suggestion(BaseModel):
+    id: int
+    quote: str
+    comment: str
+
+
+class ReviewerResult(BaseModel):
+    round: int
+    model: str
+    completed_at: str
+    suggestions: List[Suggestion] = Field(default_factory=list)
+    raw_response: str
+
+
+_JSON_LIST_RE = re.compile(r"\[\s*[\{\]].*\]", re.DOTALL)
+
+
+def _try_parse_suggestions(raw: str) -> List[Suggestion]:
+    candidate = raw.strip()
+    # If the model wrapped JSON in prose, try to extract the first JSON list.
+    if not candidate.startswith("["):
+        m = _JSON_LIST_RE.search(candidate)
+        if m:
+            candidate = m.group(0)
+        else:
+            return []
+    try:
+        data = json.loads(candidate)
+    except json.JSONDecodeError:
+        return []
+    out: List[Suggestion] = []
+    for i, item in enumerate(data, start=1):
+        if not isinstance(item, dict):
+            continue
+        q = item.get("quote")
+        c = item.get("comment")
+        if isinstance(q, str) and isinstance(c, str):
+            out.append(Suggestion(id=i, quote=q, comment=c))
+    return out
+
+
+async def run_reviewer_pass(
+    *,
+    client: OpenRouterClient,
+    slug: str,
+    chapter_n: int,
+    round_n: int,
+    en_doc: ParsedDoc,
+    target_doc: ParsedDoc,
+    source_code: str,
+    target_code: str,
+    reviewer_prompt_template: str,
+    model: str,
+    on_retry=None,
+) -> ReviewerResult:
+    payload = render_payload(en_doc, target_doc, source_code=source_code, target_code=target_code)
+    system = render_reviewer_prompt(template=reviewer_prompt_template, target_code=target_code)
+    raw = await client.chat(model=model, system=system, user=payload, on_retry=on_retry)
+
+    suggestions = _try_parse_suggestions(raw)
+    result = ReviewerResult(
+        round=round_n,
+        model=model,
+        completed_at=now_iso(),
+        suggestions=suggestions,
+        raw_response=raw,
+    )
+    cdir = _chapter_dir(slug, chapter_n)
+    (cdir / f"round-{round_n}-reviewer.json").write_text(result.model_dump_json(indent=2))
+    return result

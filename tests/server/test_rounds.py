@@ -94,3 +94,53 @@ async def test_run_editor_pass_raises_recoverable_on_paragraph_count_mismatch(in
             prior_reviewer_suggestions=None,
             model="m",
         )
+
+
+import json as _json
+
+from server.rounds import run_reviewer_pass
+
+
+async def test_run_reviewer_pass_persists_suggestions(ingested) -> None:
+    en = ParsedDoc(paragraphs=[Paragraph(style="normal", text="Hello.")])
+    tr = ParsedDoc(paragraphs=[Paragraph(style="normal", text="Bonjour.")])
+    suggestions_json = '[{"quote": "Bonjour.", "comment": "consider Salut"}]'
+    fake_client = AsyncMock()
+    fake_client.chat = AsyncMock(return_value=suggestions_json)
+
+    result = await run_reviewer_pass(
+        client=fake_client,
+        slug=ingested.slug,
+        chapter_n=1,
+        round_n=1,
+        en_doc=en,
+        target_doc=tr,
+        source_code="en",
+        target_code="fr",
+        reviewer_prompt_template="x",
+        model="openai/gpt-5",
+    )
+    assert result.suggestions[0].quote == "Bonjour."
+    f = Path(ingested.book_dir) / "chapters" / "ch01" / "round-1-reviewer.json"
+    assert f.exists()
+    data = _json.loads(f.read_text())
+    assert data["raw_response"] == suggestions_json
+
+
+async def test_run_reviewer_pass_keeps_raw_when_parse_fails(ingested) -> None:
+    en = ParsedDoc(paragraphs=[Paragraph(style="normal", text="Hello.")])
+    tr = ParsedDoc(paragraphs=[Paragraph(style="normal", text="Bonjour.")])
+    bad_json = "this is not JSON at all"
+    fake_client = AsyncMock()
+    fake_client.chat = AsyncMock(return_value=bad_json)
+
+    result = await run_reviewer_pass(
+        client=fake_client,
+        slug=ingested.slug, chapter_n=1, round_n=1,
+        en_doc=en, target_doc=tr,
+        source_code="en", target_code="fr",
+        reviewer_prompt_template="x",
+        model="m",
+    )
+    assert result.suggestions == []
+    assert result.raw_response == bad_json
