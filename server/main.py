@@ -31,6 +31,17 @@ def create_app() -> FastAPI:
     from server.routes import events as events_routes
     app.include_router(events_routes.router)
 
+    import os
+    from pathlib import Path
+
+    from fastapi.staticfiles import StaticFiles
+
+    dist_env = os.environ.get("TRANSLATE_CLIENT_DIST")
+    dist_path = Path(dist_env) if dist_env else Path(__file__).parent.parent / "client" / "dist"
+    if dist_path.exists() and (dist_path / "index.html").exists():
+        # Mount AFTER all API routes so they take precedence.
+        app.mount("/", StaticFiles(directory=str(dist_path), html=True), name="client")
+
     return app
 
 
