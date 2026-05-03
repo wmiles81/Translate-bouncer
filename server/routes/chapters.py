@@ -30,6 +30,7 @@ from server.state import (
     now_iso,
     save_chapter_meta,
 )
+from server.main import EVENT_BUS
 
 router = APIRouter()
 
@@ -96,6 +97,7 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
     editor_prompt = load_prompts(PromptKind.EDITOR)
     editor_template = next(v.text for v in editor_prompt.versions if v.id == editor_prompt.current)
 
+    EVENT_BUS.publish({"type": "status", "text": f"Round {next_round} — calling Editor ({req.model})..."})
     try:
         await run_editor_pass(
             client=client,
@@ -109,11 +111,16 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
             editor_prompt_template=editor_template,
             prior_reviewer_suggestions=suggestions,
             model=req.model,
+            on_retry=lambda attempt, total: EVENT_BUS.publish(
+                {"type": "status", "text": f"Round {next_round} — retry {attempt}/{total}..."}
+            ),
         )
     except RecoverableError as exc:
+        EVENT_BUS.publish({"type": "error", "text": str(exc)})
         raise HTTPException(status_code=422, detail={"message": str(exc), "kind": "recoverable"})
     except ConfigurationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    EVENT_BUS.publish({"type": "round_complete", "round": next_round, "stage": "editor"})
 
     cm.current_round = next_round
     cm.status = ChapterStatus.IN_PROGRESS
@@ -141,6 +148,7 @@ async def post_round_reviewer(slug: str, n: int, req: RoundRequest) -> dict:
     reviewer_prompt = load_prompts(PromptKind.REVIEWER)
     reviewer_template = next(v.text for v in reviewer_prompt.versions if v.id == reviewer_prompt.current)
 
+    EVENT_BUS.publish({"type": "status", "text": f"Round {cm.current_round} — calling Reviewer ({req.model})..."})
     result: ReviewerResult = await run_reviewer_pass(
         client=client,
         slug=slug,
@@ -152,7 +160,11 @@ async def post_round_reviewer(slug: str, n: int, req: RoundRequest) -> dict:
         target_code=bm.language_pair.to,
         reviewer_prompt_template=reviewer_template,
         model=req.model,
+        on_retry=lambda attempt, total: EVENT_BUS.publish(
+            {"type": "status", "text": f"Round {cm.current_round} — retry {attempt}/{total}..."}
+        ),
     )
+    EVENT_BUS.publish({"type": "round_complete", "round": cm.current_round, "stage": "reviewer"})
     cm.models.reviewer = req.model
     cm.prompts_used.reviewer_version = reviewer_prompt.current
     # Update the round's reviewer_completed_at.
