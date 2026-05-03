@@ -27,6 +27,7 @@ export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModal
   const [from, setFrom] = useState(DEFAULT_SOURCE);
   const [to, setTo] = useState(DEFAULT_TARGET);
   const [picking, setPicking] = useState<string | null>(null);
+  const [pickError, setPickError] = useState<string | null>(null);
 
   function cleanPath(s: string): string {
     let v = s.trim();
@@ -42,11 +43,14 @@ export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModal
   ) {
     const id = `${field}-${kind}`;
     setPicking(id);
+    setPickError(null);
     try {
       const { path } = await pickPath(kind);
-      if (!path) return;
+      if (!path) return; // user cancelled
       if (field === "translated") setTranslated(path);
       else setEnglish(path);
+    } catch (e) {
+      setPickError(e instanceof Error ? e.message : String(e));
     } finally {
       setPicking(null);
     }
@@ -74,6 +78,11 @@ export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModal
         {error && (
           <p className="mb-3 rounded border border-red-300 bg-red-50 px-2 py-1 text-sm text-red-700">
             {error}
+          </p>
+        )}
+        {pickError && (
+          <p className="mb-3 rounded border border-red-300 bg-red-50 px-2 py-1 text-sm text-red-700">
+            File picker: {pickError}
           </p>
         )}
         <div className="space-y-3">

@@ -13,13 +13,15 @@ class UnsupportedPlatform(Exception):
     pass
 
 
-_FILE_SCRIPT = """try
+_FILE_SCRIPT = """tell application "System Events" to activate
+try
 \tPOSIX path of (choose file of type {"org.openxmlformats.wordprocessingml.document"} with prompt "Choose a .docx file")
 on error
 \treturn ""
 end try"""
 
-_FOLDER_SCRIPT = """try
+_FOLDER_SCRIPT = """tell application "System Events" to activate
+try
 \tPOSIX path of (choose folder with prompt "Choose a folder of .docx chapters")
 on error
 \treturn ""
