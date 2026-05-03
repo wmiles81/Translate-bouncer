@@ -1,5 +1,19 @@
-import { finalizeChapter, runEditorRound, runReviewerRound } from "../api/chapters";
-import type { ChapterEntry } from "../types/api";
+import {
+  finalizeChapter,
+  getChapterState,
+  runEditorRound,
+  runReviewerRound,
+} from "../api/chapters";
+import type { ChapterEntry, ChapterMeta } from "../types/api";
+
+// A "round" is Editor → Reviewer → Editor (apply suggestions). The leading
+// editor is skipped when the chapter already has an editor pass with no
+// reviewer yet, so consecutive rounds don't redo work.
+function needsLeadingEditor(meta: ChapterMeta): boolean {
+  if (meta.current_round === 0) return true;
+  const last = meta.rounds.find((r) => r.n === meta.current_round);
+  return !last || last.reviewer_completed_at != null;
+}
 
 export interface BatchEvent {
   type: "chapter_start" | "round_start" | "round_done" | "chapter_done" | "error" | "done";
@@ -59,6 +73,7 @@ export async function runBatch(opts: BatchRunOptions): Promise<BatchSummary> {
 
     let chapterError = false;
     try {
+      let state = await getChapterState(opts.bookSlug, ch.n);
       for (let r = 1; r <= opts.roundsPerChapter; r++) {
         if (opts.shouldStop()) {
           stopped = true;
@@ -71,7 +86,9 @@ export async function runBatch(opts: BatchRunOptions): Promise<BatchSummary> {
           totalRounds: opts.roundsPerChapter,
           stage: "editor",
         });
-        await runEditorRound(opts.bookSlug, ch.n, opts.editorModel);
+        if (needsLeadingEditor(state)) {
+          state = await runEditorRound(opts.bookSlug, ch.n, opts.editorModel);
+        }
         opts.onProgress({
           type: "round_start",
           chapterN: ch.n,
@@ -80,6 +97,8 @@ export async function runBatch(opts: BatchRunOptions): Promise<BatchSummary> {
           stage: "reviewer",
         });
         await runReviewerRound(opts.bookSlug, ch.n, opts.reviewerModel);
+        // Apply reviewer suggestions via another editor pass.
+        state = await runEditorRound(opts.bookSlug, ch.n, opts.editorModel);
         opts.onProgress({
           type: "round_done",
           chapterN: ch.n,
