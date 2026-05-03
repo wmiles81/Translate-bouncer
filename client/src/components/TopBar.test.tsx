@@ -3,10 +3,17 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi } from "vitest";
 import TopBar from "./TopBar";
+import type { Model } from "../types/api";
 
 const chapters = [
   { n: 1, title: "One", status: "done" as const },
   { n: 2, title: "Two", status: "in_progress" as const },
+];
+
+const sampleModels: Model[] = [
+  { id: "ed", name: "Editor Model" },
+  { id: "rv", name: "Reviewer Model" },
+  { id: "other", name: "Other Model" },
 ];
 
 describe("TopBar", () => {
@@ -19,7 +26,7 @@ describe("TopBar", () => {
           currentN={2}
           editorModel="ed"
           reviewerModel="rv"
-          modelOptions={["ed", "rv", "other"]}
+          models={sampleModels}
           onEditorModelChange={() => {}}
           onReviewerModelChange={() => {}}
           onChapterChange={() => {}}
@@ -27,8 +34,8 @@ describe("TopBar", () => {
       </MemoryRouter>
     );
     expect(screen.getByLabelText(/chapter/i)).toHaveValue("2");
-    expect(screen.getByLabelText(/editor/i)).toHaveValue("ed");
-    expect(screen.getByLabelText(/reviewer/i)).toHaveValue("rv");
+    expect(screen.getByRole("button", { name: /editor/i })).toHaveTextContent("Editor Model");
+    expect(screen.getByRole("button", { name: /reviewer/i })).toHaveTextContent("Reviewer Model");
   });
 
   it("calls onChapterChange when selecting a chapter", async () => {
@@ -41,7 +48,7 @@ describe("TopBar", () => {
           currentN={1}
           editorModel="ed"
           reviewerModel="rv"
-          modelOptions={["ed", "rv"]}
+          models={sampleModels}
           onEditorModelChange={() => {}}
           onReviewerModelChange={() => {}}
           onChapterChange={onChapterChange}

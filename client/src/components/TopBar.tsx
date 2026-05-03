@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { ChapterEntry } from "../types/api";
+import type { ChapterEntry, Model } from "../types/api";
 import ModelPicker from "./ModelPicker";
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
   currentN: number;
   editorModel: string;
   reviewerModel: string;
-  modelOptions: string[];
+  models: Model[];
   onEditorModelChange: (v: string) => void;
   onReviewerModelChange: (v: string) => void;
   onChapterChange: (n: number) => void;
@@ -20,7 +20,7 @@ export default function TopBar({
   currentN,
   editorModel,
   reviewerModel,
-  modelOptions,
+  models,
   onEditorModelChange,
   onReviewerModelChange,
   onChapterChange,
@@ -47,8 +47,8 @@ export default function TopBar({
       </label>
 
       <div className="ml-auto flex items-center gap-4">
-        <ModelPicker label="Editor" value={editorModel} options={modelOptions} onChange={onEditorModelChange} />
-        <ModelPicker label="Reviewer" value={reviewerModel} options={modelOptions} onChange={onReviewerModelChange} />
+        <ModelPicker label="Editor" value={editorModel} models={models} onChange={onEditorModelChange} />
+        <ModelPicker label="Reviewer" value={reviewerModel} models={models} onChange={onReviewerModelChange} />
         <Link to="/settings" className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50">
           ⚙ Settings
         </Link>

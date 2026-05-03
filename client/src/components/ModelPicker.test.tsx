@@ -2,22 +2,80 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import ModelPicker from "./ModelPicker";
+import type { Model } from "../types/api";
+
+const sample: Model[] = [
+  {
+    id: "anthropic/claude-sonnet-4",
+    name: "Claude Sonnet 4",
+    context_length: 200000,
+    pricing: { prompt: "0.000003", completion: "0.000015" },
+    supported_parameters: ["tools"],
+  },
+  {
+    id: "openai/gpt-5",
+    name: "GPT-5",
+    context_length: 128000,
+    pricing: { prompt: "0.000005", completion: "0.000020" },
+    supported_parameters: [],
+  },
+];
 
 describe("ModelPicker", () => {
-  it("renders options and current value", () => {
-    render(<ModelPicker label="Editor" value="a" options={["a", "b"]} onChange={() => {}} />);
-    expect(screen.getByLabelText(/editor/i)).toHaveValue("a");
+  it("button shows the current model's display name", () => {
+    render(
+      <ModelPicker
+        label="Editor"
+        value="anthropic/claude-sonnet-4"
+        models={sample}
+        onChange={() => {}}
+      />
+    );
+    expect(screen.getByRole("button", { name: /editor/i })).toHaveTextContent("Claude Sonnet 4");
   });
 
-  it("emits onChange when user picks a different option", async () => {
+  it("falls back to the value as label when no matching model", () => {
+    render(<ModelPicker label="Editor" value="custom/x" models={sample} onChange={() => {}} />);
+    expect(screen.getByRole("button", { name: /editor/i })).toHaveTextContent("custom/x");
+  });
+
+  it("shows '— select —' when value is empty and no match", () => {
+    render(<ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />);
+    expect(screen.getByRole("button", { name: /editor/i })).toHaveTextContent("— select —");
+  });
+
+  it("opens a popover with all models on click", async () => {
+    render(<ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: /editor/i }));
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    expect(screen.getByText("Claude Sonnet 4")).toBeInTheDocument();
+    expect(screen.getByText("GPT-5")).toBeInTheDocument();
+  });
+
+  it("emits onChange and closes when a row is clicked", async () => {
     const onChange = vi.fn();
-    render(<ModelPicker label="Editor" value="a" options={["a", "b"]} onChange={onChange} />);
-    await userEvent.selectOptions(screen.getByLabelText(/editor/i), "b");
-    expect(onChange).toHaveBeenCalledWith("b");
+    render(<ModelPicker label="Editor" value="" models={sample} onChange={onChange} />);
+    await userEvent.click(screen.getByRole("button", { name: /editor/i }));
+    await userEvent.click(screen.getByText("GPT-5"));
+    expect(onChange).toHaveBeenCalledWith("openai/gpt-5");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
-  it("includes the current value as an option even if not in the list", () => {
-    render(<ModelPicker label="Editor" value="custom/x" options={["a", "b"]} onChange={() => {}} />);
-    expect(screen.getByRole("option", { name: "custom/x" })).toBeInTheDocument();
+  it("renders tool-supporting models in red text", async () => {
+    const { container } = render(
+      <ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />
+    );
+    await userEvent.click(screen.getByRole("button", { name: /editor/i }));
+    const reds = container.querySelectorAll("span.text-red-600");
+    // Claude has tools; GPT-5 doesn't.
+    const texts = Array.from(reds).map((el) => el.textContent);
+    expect(texts).toContain("Claude Sonnet 4");
+    expect(texts).not.toContain("GPT-5");
+  });
+
+  it("shows pricing in the row", async () => {
+    render(<ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: /editor/i }));
+    expect(screen.getByText(/\$3\.00 \/ \$15\.00 per M/)).toBeInTheDocument();
   });
 });

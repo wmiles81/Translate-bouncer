@@ -103,7 +103,7 @@ export default function ChapterRoute() {
         currentN={n}
         editorModel={editorModel}
         reviewerModel={reviewerModel}
-        modelOptions={models.map(m => m.id)}
+        models={models}
         onEditorModelChange={setEditorModel}
         onReviewerModelChange={setReviewerModel}
         onChapterChange={(newN) => navigate(`/book/${slug}/chapter/${newN}`)}
