@@ -65,58 +65,100 @@ status bar shows you exactly what every model is doing, in real time.
 
 ## 2. One-time setup
 
-You need three things on your computer:
+You need two things on your computer:
 
-1. **Python 3.11** (or newer)
-2. **Node.js** (only the first time, to build the web interface)
-3. An **OpenRouter API key** — sign up at https://openrouter.ai, click
+1. **Python 3.11** (or newer) — Translate uses Python under the hood.
+   - **Mac**: download the installer at https://www.python.org/downloads/
+     and run it.
+   - **Windows**: download the installer at https://www.python.org/downloads/
+     and run it. **Important**: tick "Add Python to PATH" during install.
+   - **Linux**: install via your package manager —
+     `sudo apt install python3.11 python3.11-venv` (Debian/Ubuntu),
+     `sudo dnf install python3.11` (Fedora), or
+     `sudo pacman -S python` (Arch).
+2. An **OpenRouter API key** — sign up at https://openrouter.ai, click
    "Keys" in the top-right, and copy a key. Keep it secret. You pay
    OpenRouter for whatever models you actually run; pricing is shown next
    to each model in the Translate model picker.
 
+That's it. You do **not** need Node.js, git, or any developer tools — the
+web interface ships pre-built inside the zip.
+
 ### Install Translate
 
-Open Terminal (macOS), navigate to the Translate folder, then:
+1. Download `Translate.zip`.
+2. Double-click the zip to unzip it. You'll get a folder called `Translate`.
+3. Drag the `Translate` folder somewhere you'll remember — your Documents
+   folder, your Desktop, anywhere. **Don't** leave it inside Downloads, or
+   macOS may put it in quarantine.
 
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-Then build the web interface (only needed once, or whenever you update the code):
-
-```bash
-cd client
-npm install
-npm run build
-cd ..
-```
-
-You're done. Type `deactivate` if you want to leave the Python virtual
-environment; you don't need to be in it to run Translate later.
+You're done with installation.
 
 ---
 
 ## 3. Starting Translate
 
-In Terminal:
+### Mac
+
+Open the `Translate` folder in Finder and **double-click `Launch Translate.command`**.
+
+The first time you do this, macOS may say *"Launch Translate.command cannot
+be opened because it is from an unidentified developer."* If so:
+
+1. Right-click `Launch Translate.command` (or Control-click), choose **Open**.
+2. macOS will ask once more — click **Open** to confirm.
+
+After that first time, double-click works normally.
+
+### Windows
+
+Open the `Translate` folder in Explorer and **double-click `Launch Translate.bat`**.
+
+If Windows SmartScreen says *"Windows protected your PC"*, click **More info**
+then **Run anyway**.
+
+### Linux
+
+Open a terminal in the `Translate` folder and run:
 
 ```bash
-.venv/bin/translate
+./launch-translate.sh
 ```
 
-That single command does five things:
+Or, if your file manager supports it (GNOME Files, Nautilus, Dolphin, Thunar),
+right-click `launch-translate.sh` and choose **"Run in Terminal"**. You may
+need to mark it executable first with `chmod +x launch-translate.sh`.
+
+### What the launcher does
+
+A Terminal/Console window opens and you'll see something like:
+
+```
+Using Python: Python 3.11.7 at /usr/local/bin/python3.11
+
+First-time setup: creating a local Python environment in .venv ...
+Installing dependencies (this may take ~30 seconds)...
+Setup complete.
+
+Starting Translate. Your browser will open in a moment.
+To stop Translate, press Ctrl+C here, or just close this Terminal window.
+```
+
+The first launch installs Translate's Python dependencies into a `.venv`
+folder inside the Translate folder (~30 seconds, one time only). Every launch
+after that skips the install and starts the app immediately.
+
+The launcher then:
 
 1. Picks a free network port (5180, then 5181, etc. if 5180 is busy).
-2. Starts a small web server on that port.
-3. Writes its address to `~/.translate/.lock` so a second `translate` command
-   knows to just open the same browser tab instead of starting again.
+2. Starts a small local web server on that port.
+3. Writes its address to `~/.translate/.lock` so a second launch just opens
+   the existing browser tab instead of starting twice.
 4. Opens your default web browser to the Translate home page.
-5. Prints the URL in the terminal so you can copy it into a different browser
-   if you want.
+5. Prints the URL in the terminal so you can copy it into a different browser.
 
-Leave the Terminal window open while you work — closing it stops Translate.
+**Leave the Terminal/Console window open while you work — closing it stops
+Translate.**
 
 ---
 
@@ -514,6 +556,44 @@ call; if you hit that, it counts as transient and gets retried.
 
 ## 15. For developers
 
+### Working from source
+
+End users get the pre-built zip. Developers cloning the repo need:
+
+- Python 3.11+
+- Node.js 18+ and npm
+- (optional) `git`
+
+Install:
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+cd client
+npm install
+npm run build
+cd ..
+```
+
+Then start:
+
+```bash
+.venv/bin/translate
+```
+
+### Building the distributable zip
+
+```bash
+./scripts/package.sh
+```
+
+Output lands at `release/Translate.zip`. The script rebuilds the web UI,
+stages the Python source, copies the launchers and `LICENSE`/`README`/
+`QUICK_START`, and zips the lot. End users only need to download that
+zip — they don't need Node or git.
+
 ### Project layout
 
 ```
@@ -570,7 +650,8 @@ docs/                      design docs and plans
 cd client && npm run dev
 ```
 
-Vite serves on http://localhost:5173.
+Vite serves on http://localhost:5173 with hot reload. API calls are
+proxied to the Python server.
 
 ### Tests
 
