@@ -6,8 +6,8 @@ multi-round Editor → Reviewer loop using any pair of OpenRouter-routed models.
 
 ## Status
 
-Plan 1 (server) is complete. Plan 2 (web client) is pending — for now, drive
-the server via HTTP/curl.
+Both Plan 1 (server) and Plan 2 (web client) are complete. The server alone is
+operable via curl; with the client built, `translate` opens a polished browser UI.
 
 ## Install (development)
 
@@ -27,6 +27,33 @@ The server picks a free port (5180+), opens your default browser, and prints
 the URL. Lock file lives at `~/.translate/.lock`. A second `translate` invocation
 detects the running instance, opens a browser tab to the existing URL, and
 exits.
+
+## Building the client
+
+The client is a React + Vite + TypeScript SPA in `client/`. To build it once:
+
+```
+cd client
+npm install
+npm run build
+```
+
+The build output lives in `client/dist/`. When the server starts, it auto-detects
+`client/dist/index.html` and mounts it on `/`. With no built client, the server
+still serves the API but the browser landing page returns 404.
+
+For development, run the server and the client separately:
+
+```
+# Terminal 1: server
+translate --no-browser
+
+# Terminal 2: Vite dev server (proxies API calls to the server)
+cd client && npm run dev
+```
+
+Vite serves the client on `http://localhost:5173`; API calls (`/health`, `/books`,
+`/events`, etc.) are proxied to `http://localhost:5180`.
 
 ## API surface
 
@@ -54,6 +81,13 @@ pytest tests/server/test_e2e_smoke.py -v -s
 
 ```
 pytest tests/server/ -v
+```
+
+## Client tests
+
+```
+cd client
+npm test
 ```
 
 ## Where state lives
