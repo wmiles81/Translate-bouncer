@@ -105,9 +105,10 @@ export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModal
                 disabled={picking !== null}
                 title="Choose .docx file"
                 aria-label="Choose translated .docx file"
-                className="rounded border border-gray-300 px-2 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                className="flex items-center gap-1 rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
                 {FileIcon}
+                <span>File</span>
               </button>
               <button
                 type="button"
@@ -115,9 +116,10 @@ export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModal
                 disabled={picking !== null}
                 title="Choose folder of .docx chapters"
                 aria-label="Choose translated folder"
-                className="rounded border border-gray-300 px-2 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                className="flex items-center gap-1 rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
                 {FolderIcon}
+                <span>Folder</span>
               </button>
             </div>
           </div>
@@ -140,9 +142,10 @@ export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModal
                 disabled={picking !== null}
                 title="Choose .docx file"
                 aria-label="Choose English .docx file"
-                className="rounded border border-gray-300 px-2 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                className="flex items-center gap-1 rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
                 {FileIcon}
+                <span>File</span>
               </button>
               <button
                 type="button"
@@ -150,9 +153,10 @@ export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModal
                 disabled={picking !== null}
                 title="Choose folder of .docx chapters"
                 aria-label="Choose English folder"
-                className="rounded border border-gray-300 px-2 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                className="flex items-center gap-1 rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
                 {FolderIcon}
+                <span>Folder</span>
               </button>
             </div>
           </div>
