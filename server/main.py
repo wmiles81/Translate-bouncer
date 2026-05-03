@@ -28,4 +28,7 @@ def create_app() -> FastAPI:
     from server.routes import chapters as chapters_routes
     app.include_router(chapters_routes.router)
 
+    from server.routes import events as events_routes
+    app.include_router(events_routes.router)
+
     return app
