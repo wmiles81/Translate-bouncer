@@ -1,98 +1,591 @@
 # Translate
 
-A local web app for AI-assisted bilingual chapter proofreading. Point it at a
-translated book and its English original, pick chapters to proof, and run a
-multi-round Editor → Reviewer loop using any pair of OpenRouter-routed models.
+A local web app for AI-assisted bilingual chapter proofreading. You point it at
+a translated book (e.g. a German `.docx`) and the English original, and it walks
+each chapter through repeated **Editor → Reviewer → Editor (apply suggestions)**
+rounds using two AI models you choose, until the translation reads the way you
+want it to. When you're happy, click **Done** and Translate writes a final
+`.docx` for that chapter.
 
-## Status
+Everything runs on your own computer. The only outside service it talks to is
+[OpenRouter](https://openrouter.ai), which routes prompts to whichever AI model
+you pick (Claude, GPT-5, DeepSeek, etc.). Your manuscripts never leave your
+machine except as the prompt body sent to OpenRouter for the model you selected.
 
-Both Plan 1 (server) and Plan 2 (web client) are complete. The server alone is
-operable via curl; with the client built, `translate` opens a polished browser UI.
+> **Audience**: Future Fiction Academy members translating their own books.
+> See `LICENSE.txt` for the use restriction.
 
-## Install (development)
+---
 
-```
+## Table of contents
+
+1. [What it does, in plain English](#1-what-it-does-in-plain-english)
+2. [One-time setup](#2-one-time-setup)
+3. [Starting Translate](#3-starting-translate)
+4. [The Settings page (do this first)](#4-the-settings-page-do-this-first)
+5. [Adding a book (the New book window)](#5-adding-a-book-the-new-book-window)
+6. [The Books list (the home page)](#6-the-books-list-the-home-page)
+7. [The Book page](#7-the-book-page)
+8. [The Chapter workspace (the editor page)](#8-the-chapter-workspace-the-editor-page)
+9. [What a "round" actually does](#9-what-a-round-actually-does)
+10. [The Batch row — running many chapters at once](#10-the-batch-row--running-many-chapters-at-once)
+11. [Editing the prompts](#11-editing-the-prompts)
+12. [Where files live on your computer](#12-where-files-live-on-your-computer)
+13. [Stopping the program](#13-stopping-the-program)
+14. [Troubleshooting](#14-troubleshooting)
+15. [For developers](#15-for-developers)
+
+---
+
+## 1. What it does, in plain English
+
+You have:
+
+- An English book (`.docx`, or a folder of one-`.docx`-per-chapter)
+- A first-pass translation of that book into another language (same shape)
+
+Translate splits both books into chapters, lines them up paragraph-for-paragraph,
+and lets you walk through each chapter polishing the translation. For each
+chapter you click **Continue**, and Translate sends the bilingual paragraphs
+to an **Editor model** (e.g. Claude Sonnet) that produces a smoother
+translation, then to a **Reviewer model** (e.g. GPT-5) that reads the result
+and writes a list of suggestions, then back to the Editor model one more time
+to actually apply those suggestions.
+
+You can do this round again as many times as you like. Each round produces a
+new working version of the chapter that you can compare against the previous
+one side-by-side. When you click **Done**, Translate writes the final chapter
+to disk.
+
+You can also do this **in batch** — say "run rounds 4–17 of my book through 2
+rounds each, with Claude as Editor and GPT-5 as Reviewer" and walk away. The
+status bar shows you exactly what every model is doing, in real time.
+
+---
+
+## 2. One-time setup
+
+You need three things on your computer:
+
+1. **Python 3.11** (or newer)
+2. **Node.js** (only the first time, to build the web interface)
+3. An **OpenRouter API key** — sign up at https://openrouter.ai, click
+   "Keys" in the top-right, and copy a key. Keep it secret. You pay
+   OpenRouter for whatever models you actually run; pricing is shown next
+   to each model in the Translate model picker.
+
+### Install Translate
+
+Open Terminal (macOS), navigate to the Translate folder, then:
+
+```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-## Run
+Then build the web interface (only needed once, or whenever you update the code):
 
-```
-translate
-```
-
-The server picks a free port (5180+), opens your default browser, and prints
-the URL. Lock file lives at `~/.translate/.lock`. A second `translate` invocation
-detects the running instance, opens a browser tab to the existing URL, and
-exits.
-
-## Building the client
-
-The client is a React + Vite + TypeScript SPA in `client/`. To build it once:
-
-```
+```bash
 cd client
 npm install
 npm run build
+cd ..
 ```
 
-The build output lives in `client/dist/`. When the server starts, it auto-detects
-`client/dist/index.html` and mounts it on `/`. With no built client, the server
-still serves the API but the browser landing page returns 404.
+You're done. Type `deactivate` if you want to leave the Python virtual
+environment; you don't need to be in it to run Translate later.
 
-For development, run the server and the client separately:
+---
+
+## 3. Starting Translate
+
+In Terminal:
+
+```bash
+.venv/bin/translate
+```
+
+That single command does five things:
+
+1. Picks a free network port (5180, then 5181, etc. if 5180 is busy).
+2. Starts a small web server on that port.
+3. Writes its address to `~/.translate/.lock` so a second `translate` command
+   knows to just open the same browser tab instead of starting again.
+4. Opens your default web browser to the Translate home page.
+5. Prints the URL in the terminal so you can copy it into a different browser
+   if you want.
+
+Leave the Terminal window open while you work — closing it stops Translate.
+
+---
+
+## 4. The Settings page (do this first)
+
+From any page, click the **⚙ Settings** button in the top-right.
+
+The Settings page has three sections:
+
+### OpenRouter
+
+- **API key** — paste your OpenRouter key here. The text is hidden (shown as
+  dots). Click **Save** to store it. The key is saved to
+  `~/.translate/config.json` with file permission `600` (only your user
+  account can read it).
+- **Refresh model list** — fetches the current list of models from
+  OpenRouter. Translate uses this list to populate the model dropdowns and
+  show prices. If you change your API key, click this. (It will save the
+  key first if you haven't already.)
+- The grey number to the right (e.g. "**420 models**") tells you how many
+  models OpenRouter currently exposes.
+
+### Default models
+
+These are the models that get pre-filled when you open a new chapter. You
+can override them per-chapter from the chapter page.
+
+- **Editor** — the model that does the actual rewriting. Type a model ID
+  (`anthropic/claude-sonnet-4`, etc.) or click **Browse…** to pick from a
+  searchable list.
+- **Reviewer** — the model that reads the editor's output and writes
+  suggestions. Pick a *different* model from the editor for the most
+  useful critique.
+
+Click **Save** at the bottom of the section.
+
+### The Browse models window
+
+Clicking **Browse…** opens a popup with every OpenRouter model:
+
+- **Search** box at the top — filters by model ID or display name.
+- **Sort** dropdown — Provider (default), Release date, Context size.
+- **Free only** checkbox — show only models that cost $0.
+- **Provider chips** — click one to filter to just that provider; click again
+  to clear. Multiple chips can be active at once.
+- Each row shows: model name (in **red** if it supports tool use),
+  context size in K, and pricing as `$input/$output` per million tokens.
+- Click a row to select that model and close the window. Click **Close** or
+  click outside to cancel.
+
+### Ingestion (advanced — usually leave alone)
+
+This tells Translate how to detect chapter boundaries inside a single whole-book
+`.docx`. If your manuscripts use the standard "Heading 1" Word style for chapter
+titles, you can ignore this section.
+
+- **Heading style** — the Word style name that marks a chapter title.
+  Default: `Heading 1`.
+- **Fallback patterns** — regular expressions, one per line, that also
+  count as chapter boundaries when the heading style alone misses them.
+  Default patterns recognize "Chapter 1", "Chapter One", "Prologue",
+  "Epilogue", and `# Title` markdown.
+
+### Editor / Reviewer prompts
+
+At the bottom: links to **Edit editor prompt** and **Edit reviewer prompt**.
+See [section 11](#11-editing-the-prompts) for how those work.
+
+---
+
+## 5. Adding a book (the New book window)
+
+From the Books list (home page), click the **+ New book** button. A modal
+window opens.
+
+### Field by field
+
+- **Translated source** — the path to your translated `.docx`, OR a folder
+  containing one `.docx` per chapter. Click the **📁 File** button to open
+  a native macOS file picker, or **📁 Folder** to pick a folder of chapter
+  files. (You can also paste a path; Translate strips wrapping quotes.)
+- **English source** — same idea, for the English original.
+- **Source language** — what the English file is in. Defaults to **English (en)**.
+- **Target language** — what the translated file is in (German, French,
+  Spanish, Brazilian Portuguese, etc.). This is used to label paragraphs
+  in the bilingual payload sent to the model.
+
+### Buttons
+
+- **Cancel** — close the window without ingesting.
+- **Create book** — Translate splits both files into chapters, pairs them
+  up by chapter index (chapter 1 of English with chapter 1 of translation,
+  etc.), and writes everything into `~/.translate/<your-book-slug>/`. If
+  the chapter counts don't match, you'll get an error listing the chapter
+  titles found in each file so you can fix the source documents.
+
+The slug is generated from the translated file's name. After ingest, the
+book appears in the Books list.
+
+---
+
+## 6. The Books list (the home page)
+
+This is what you see when Translate opens.
+
+- **+ New book** button — top-right. Opens the New book window above.
+- **⚙ Settings** button — top-right. Opens Settings.
+- **One row per book** — each row shows the book's slug; click anywhere on
+  the row to open that book. If no books exist, you see "No books yet."
+
+That's the whole page.
+
+---
+
+## 7. The Book page
+
+Clicking a book row opens its overview.
+
+- **← Books** link — top-left, returns to the home page.
+- **Book slug** — large title.
+- **Chapter list** — every chapter as a row showing `Ch 01 — Title — status`.
+  - Status `untouched` (grey) = no rounds run yet.
+  - Status `in_progress` (blue) = at least one round done, not finalized.
+  - Status `done` (green) = finalized. The `final.docx` exists.
+- Click any chapter row to open the Chapter workspace.
+
+---
+
+## 8. The Chapter workspace (the editor page)
+
+This is where most of the work happens. The page is laid out as four bands
+top-to-bottom:
 
 ```
-# Terminal 1: server
-translate --no-browser
+┌─────────────────────────────────────────────────────────┐
+│ Top bar        [chapter ▾]  Editor ▾  Reviewer ▾  ⚙     │
+├──────────────┬──────────────────┬───────────────────────┤
+│  English     │  Working (target)│  Suggestions / Dialog │
+│              │                  │                       │
+├──────────────┴──────────────────┴───────────────────────┤
+│ Batch row     [from][to][skip done][rounds][finalize] [Run batch] │
+├─────────────────────────────────────────────────────────┤
+│ Activity log (scrolling)                                │
+│ Status line + [Continue] [Done]                          │
+└─────────────────────────────────────────────────────────┘
+```
 
-# Terminal 2: Vite dev server (proxies API calls to the server)
+### The top bar
+
+- **← Book** — go back to the book overview.
+- **Chapter** dropdown — jump to any chapter without leaving the workspace.
+  Items show as `Ch 03 / 17`.
+- **Editor** picker — model used for editor passes in this chapter. Defaults
+  to your global default; change per chapter as you like.
+- **Reviewer** picker — same idea for the reviewer.
+  - Picker rows show: name (in **red** if the model supports tools), context
+    size, and pricing `$input/$output` per million tokens.
+- **⚙ Settings** — opens Settings.
+
+### The three panes
+
+**Left — English.** Read-only. The English source paragraphs.
+
+**Middle — Working.** The current target-language version. After Round 1
+this is the editor's first translation; after Round 2 it incorporates the
+Round-1 reviewer's suggestions; and so on. **Inline strike-through and
+underline diffs** show what changed since the previous round.
+
+**Right — Suggestions / Dialog.** Has two tabs at the top-right:
+
+- **Suggestions** (default) — the most recent reviewer's list of
+  suggestions, each shown as a quote from the working text plus the
+  reviewer's comment.
+- **Dialog** — the full back-and-forth between the editor and reviewer for
+  every round, with the raw text each model returned. Three collapsible
+  sections per round:
+  - *Editor* (raw text the editor produced)
+  - *Reviewer* (raw text the reviewer produced)
+  - *Suggestions extracted* (the parsed suggestion list)
+
+  Use this when something looks wrong and you want to see exactly what the
+  models said.
+
+### The Batch row
+
+Compact controls for running many rounds and many chapters at once.
+See [section 10](#10-the-batch-row--running-many-chapters-at-once).
+
+### The activity log + status bar (bottom)
+
+A scrolling log shows every action with timestamps:
+
+```
+14:02:15  Ch 3 R2 → Editor (anthropic/claude-opus) · source: round 1 editor output
+14:04:31  Ch 3 R2 ← Editor returned
+14:04:31  ✓ Ch 3 R2 editor complete
+14:04:31  Ch 3 R2 → Reviewer (z-ai/glm-4.7) · source: round 2 editor output
+14:07:51  Ch 3 R2 ← Reviewer returned 21 suggestions
+14:07:51  ✓ Ch 3 R2 reviewer complete
+```
+
+- Grey lines are in-progress events; green lines are completions; red
+  lines are errors.
+- Below the log: a single status line shows the most recent event plus
+  elapsed seconds when a model is running, plus two buttons:
+  - **Continue** — run one round of *Editor → Reviewer → Editor (apply)*.
+    Disabled while busy. See [section 9](#9-what-a-round-actually-does).
+  - **Done** — finalize the chapter. Writes `final.docx` and marks the
+    chapter `done`. Disabled until at least one round has run.
+
+---
+
+## 9. What a "round" actually does
+
+When you click **Continue**, Translate makes up to three calls in sequence:
+
+1. **Editor pass** — sends the current working translation (plus any prior
+   reviewer's suggestions) to the editor model. The model returns a fresh
+   bilingual rendering. Translate parses it and writes
+   `round-N-editor.docx` and `round-N-editor.json` to disk.
+2. **Reviewer pass** — sends the new editor output to the reviewer model
+   asking it to suggest improvements. The model returns a JSON list of
+   `{quote, comment}` suggestions. Translate parses and saves those as
+   `round-N-reviewer.json`.
+3. **Apply pass (a second editor pass)** — sends those suggestions back
+   to the editor model so the suggestions actually get incorporated into
+   the prose. The result becomes `round-(N+1)-editor.docx`.
+
+If you click **Continue** again right away, Translate notices the chapter
+already has an editor pass that hasn't been reviewed (the apply pass from
+the previous round), so it **skips the leading editor call** and goes
+straight to Reviewer + Apply. Each subsequent click costs you one Reviewer
+call and one Editor call — no wasted work.
+
+The **working pane** always shows the latest editor output. The
+**previous round** is whatever editor output came right before it, which
+is what the inline diff is computed against.
+
+You can run as many rounds as you want; each one is saved to disk
+separately, so nothing is lost.
+
+When you're happy, click **Done**. Translate copies the latest editor
+output to `final.docx` in the chapter's folder and flips the chapter
+status to `done`. The Done button is disabled until you've run at least
+one round.
+
+---
+
+## 10. The Batch row — running many chapters at once
+
+The batch row sits between the panes and the status bar.
+
+### Fields
+
+- **From** / **To** — chapter range (inclusive). Defaults to "current
+  chapter through the end."
+- **Skip done** — checkbox. When on, chapters already marked `done` are
+  skipped.
+- **Rounds** — how many full rounds (Editor → Reviewer → Editor-apply) to
+  run on each chapter. Default `2`.
+- **Finalize each** — checkbox. When on, every chapter is finalized
+  immediately after its last round.
+- **N chapters × M** — read-out telling you how many chapters will run
+  and how many rounds each.
+
+### Buttons
+
+- **Run batch** — disabled until you've picked an editor model, a reviewer
+  model, and at least one chapter is selected. Click to start.
+- **Stop after current chapter** — replaces "Run batch" while a batch is
+  running. Click to stop *gracefully* (the current chapter completes; no
+  new chapter is started). The in-flight model call is **not** cancelled.
+
+### What you see while running
+
+The activity log (right below the batch row) updates live:
+
+- Each chapter starts with a blue/grey line: `▶ Batch ch 4 (1/14): Title`.
+- Every model call streams its sent / returned events.
+- Each chapter ends with: `✓ Batch ch 4 done` (green) or `⚠ Batch ch 4: <error>` (red).
+- The whole batch ends with: `✓ Batch complete`.
+
+Errors on one chapter don't stop the batch. The next chapter still runs.
+
+You can keep clicking around the workspace while a batch runs — switch
+chapters, toggle to the Dialog tab, etc. Just don't close the browser tab
+or the Terminal window.
+
+---
+
+## 11. Editing the prompts
+
+Translate ships with default Editor and Reviewer prompts that work for most
+fiction. If you want to customize them, go to **⚙ Settings → Edit editor
+prompt** (or **Edit reviewer prompt**).
+
+The prompt page has:
+
+- A large text area showing the **current** prompt.
+- **Save as new version** — writes your changes as a new version, sets it
+  current. Old versions stay on disk.
+- **Version history** — a list of every saved version with timestamps.
+  - **Restore** — make a past version current again.
+  - **Delete** — permanently remove a non-current version.
+
+Templates use a couple of substitution tokens that Translate fills in at
+runtime — `{TARGET_LANG_CODE}`, `{TARGET_LANG_NAME}`, `{SOURCE_LANG_NAME}`.
+Don't remove these.
+
+---
+
+## 12. Where files live on your computer
+
+Everything Translate stores is under `~/.translate/`:
+
+| Path | What it is |
+|------|------------|
+| `~/.translate/config.json` | Your API key, default models, and ingestion patterns. Permission `600`. |
+| `~/.translate/prompts/editor.json` | Editor prompt and full version history. |
+| `~/.translate/prompts/reviewer.json` | Reviewer prompt and full version history. |
+| `~/.translate/.lock` | Single-instance lock (PID + URL). Deleted when Translate quits cleanly. |
+| `~/.translate/<book-slug>/book.json` | This book's metadata (sources, language pair, chapter list). |
+| `~/.translate/<book-slug>/source-en/chNN.json` | Parsed English chapter (paragraphs + styles). |
+| `~/.translate/<book-slug>/source-translated/chNN.json` | Parsed first-pass translation. |
+| `~/.translate/<book-slug>/chapters/chNN/round-K-editor.docx` | The editor's output for round K, as Word. |
+| `~/.translate/<book-slug>/chapters/chNN/round-K-editor.json` | Same, as parsed JSON. |
+| `~/.translate/<book-slug>/chapters/chNN/round-K-editor.raw.txt` | The literal text the editor returned. Useful for debugging parse failures. |
+| `~/.translate/<book-slug>/chapters/chNN/round-K-reviewer.json` | The reviewer's parsed suggestions for round K, plus raw response. |
+| `~/.translate/<book-slug>/chapters/chNN/chNN.json` | Chapter metadata (status, current round, models used per round, prompts used per round). |
+| `~/.translate/<book-slug>/chapters/chNN/final.docx` | Written when you click Done. The shippable result. |
+
+**You can copy or delete a book by copying or removing its folder.**
+Deleting `~/.translate/<book-slug>/` permanently removes that book and all
+its rounds.
+
+---
+
+## 13. Stopping the program
+
+Three ways:
+
+1. In the Terminal window where you ran `translate`, press **Ctrl+C**.
+2. Or close the Terminal window. (Same effect.)
+3. Or, if Translate seems frozen, find its process and kill it:
+   ```bash
+   cat ~/.translate/.lock      # shows {"pid": 12345, ...}
+   kill 12345                  # gentle stop
+   kill -9 12345               # force stop if the gentle one didn't work
+   rm ~/.translate/.lock       # remove the stale lock file
+   ```
+
+Closing the browser tab does **not** stop the program — the server keeps
+running. Reopen the URL printed in the terminal to come back.
+
+---
+
+## 14. Troubleshooting
+
+**"OpenRouter rejected the API key (401)"** — your key is missing or wrong.
+Settings → OpenRouter → API key, paste a fresh key, click **Save**.
+
+**"HTTP 422: expected N blocks, found 0"** — the editor model returned text
+in a format Translate couldn't parse. The raw response is saved to
+`~/.translate/<book-slug>/chapters/chNN/round-K-editor.raw.txt`. Open the
+**Dialog** tab in the right pane to see what the model actually said. Often
+this is a smaller / cheaper model getting the format wrong; pick a stronger
+editor model and click Continue again.
+
+**"HTTP 502" / "transient"** — OpenRouter or the underlying provider had a
+hiccup. Translate already retries three times automatically (1s, 2s, 4s
+backoff). If you still see this, just click Continue again.
+
+**"Model not available: …"** — the model ID you picked isn't routable on
+your OpenRouter plan. Open Settings → Browse and pick a different one.
+
+**Activity log is empty / nothing happens when I click Continue** — make
+sure your API key is saved (Settings) and that the editor and reviewer
+model dropdowns in the top bar both show a model. If they're blank, set
+defaults in Settings or pick from the dropdowns directly.
+
+**The browser tab shows "404 Not Found"** — the web interface wasn't built.
+Run `cd client && npm install && npm run build` then refresh the tab.
+
+**"This file picker won't show my Google Drive .docx file"** — make sure
+the file is actually downloaded to your computer (not just a Google
+Docs link). Drive desktop sometimes shows files greyed-out until they
+finish downloading.
+
+**"My round is taking forever"** — slow models (Opus, large reasoning
+models) can take several minutes per call. Translate's elapsed-seconds
+counter shows you it's still alive. The HTTP timeout is 10 minutes per
+call; if you hit that, it counts as transient and gets retried.
+
+---
+
+## 15. For developers
+
+### Project layout
+
+```
+server/                    Python FastAPI server
+  main.py                  app factory, lock-file, CLI entry point
+  config.py                Pydantic config model + load/save
+  ingest.py                book ingestion (chapter splitting, pairing)
+  chapter_split.py         Word .docx chapter detection
+  docx_io.py               .docx ↔ ParsedDoc conversion
+  payload.py               bilingual payload renderer + tolerant parser
+  prompts.py               editor/reviewer prompts + version history
+  rounds.py                editor/reviewer pass orchestration
+  finalize.py              writes final.docx
+  openrouter.py            HTTP client with retry and 600s timeout
+  routes/                  FastAPI route modules
+client/                    React + Vite + TypeScript SPA
+  src/views/               BookListRoute, BookViewRoute, ChapterRoute,
+                           SettingsRoute, NewBookModal, BatchRunModal
+  src/components/          TopBar, StatusBar, BatchControls,
+                           ModelPicker, ModelBrowser, EnglishPane,
+                           WorkingPane, SuggestionsPane, DiffView, …
+  src/lib/                 batchRunner, modelDisplay, languages, diff
+  src/api/                 small fetch wrappers per resource
+  src/hooks/               useBook, useChapter, useEvents, useModels, useSettings
+tests/server/              pytest suite (106+1 skipped)
+docs/                      design docs and plans
+```
+
+### API surface
+
+- `GET  /health` — liveness check
+- `GET  /settings`, `PUT /settings` — config
+- `GET  /models` — proxied OpenRouter model list
+- `GET  /prompts/{kind}`, `PUT /prompts/{kind}` — prompts with version history
+  - `POST /prompts/{kind}/restore/{version_id}`
+  - `DELETE /prompts/{kind}/{version_id}`
+- `GET  /books`, `POST /books`, `GET /books/{slug}` — list, ingest, get state
+- `GET  /books/{slug}/chapter/{n}/state` — chapter state
+- `POST /books/{slug}/chapter/{n}/round/editor` — run an Editor pass
+- `POST /books/{slug}/chapter/{n}/round/reviewer` — run a Reviewer pass
+- `POST /books/{slug}/chapter/{n}/finalize` — write `final.docx`, mark done
+- `GET  /books/{slug}/chapter/{n}/docs` — parsed paragraph data for the panes
+- `GET  /books/{slug}/chapter/{n}/dialog` — per-round raw model exchanges
+- `GET  /events` — Server-Sent Events stream (round progress, retries, errors)
+- `POST /system/pick-path` — invoke the native macOS file/folder picker
+
+### Running in dev mode
+
+```bash
+# Terminal 1: server with no auto-browser
+.venv/bin/translate --no-browser
+
+# Terminal 2: Vite dev server (proxies /health, /books, /events, … to :5180)
 cd client && npm run dev
 ```
 
-Vite serves the client on `http://localhost:5173`; API calls (`/health`, `/books`,
-`/events`, etc.) are proxied to `http://localhost:5180`.
+Vite serves on http://localhost:5173.
 
-## API surface
+### Tests
 
-- `GET  /health` — liveness check
-- `GET  /settings`, `PUT /settings` — config (API key, default models, ingestion patterns)
-- `GET  /models` — proxied OpenRouter model list
-- `GET  /prompts/{kind}`, `PUT /prompts/{kind}` — prompts with version history
-  - `POST /prompts/{kind}/restore/{version_id}` — restore a past version
-  - `DELETE /prompts/{kind}/{version_id}` — delete a historical version
-- `GET  /books`, `POST /books`, `GET /books/{slug}` — list, ingest, get state
-- `GET  /books/{slug}/chapter/{n}/state` — chapter state
-- `POST /books/{slug}/chapter/{n}/round/editor`   — run an Editor pass
-- `POST /books/{slug}/chapter/{n}/round/reviewer` — run a Reviewer pass
-- `POST /books/{slug}/chapter/{n}/finalize` — write `final.docx`, mark done
-- `GET  /events` — Server-Sent Events stream of round progress
-
-## Manual smoke procedure (real OpenRouter)
-
-```
-export OPENROUTER_API_KEY=sk-or-...
-pytest tests/server/test_e2e_smoke.py -v -s
+```bash
+.venv/bin/python -m pytest tests/server/ -v   # 106 passed, 1 skipped
+cd client && npm test                          # 95 tests
 ```
 
-## Tests
+### Contributing
 
-```
-pytest tests/server/ -v
-```
+This project is internal to GML Publishing LLC and the Future Fiction Academy
+member community. See `LICENSE.txt` for the terms of use. External pull
+requests are not accepted; bug reports from FFA members are welcome through
+your usual support channel.
 
-## Client tests
+---
 
-```
-cd client
-npm test
-```
-
-## Where state lives
-
-- `~/.translate/config.json` (mode 600) — API key + default models + ingestion patterns
-- `~/.translate/prompts/{editor,reviewer}.json` — current prompt + version history
-- `~/.translate/<book-slug>/` — per-book working folder
-- `~/.translate/.lock` — single-instance lock (PID + URL)
+© 2026 GML Publishing LLC. All rights reserved.

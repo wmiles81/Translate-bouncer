@@ -1,0 +1,67 @@
+Translate — Restricted MIT License
+
+Copyright (c) 2026 GML Publishing LLC. All rights reserved.
+
+This license is a modification of the MIT License. The terms below replace
+the MIT License's permission grant with one that is restricted to a defined
+class of recipients.
+
+1. Definitions
+
+   "Software" means the source code, compiled output, documentation, and
+   any associated files distributed with this license.
+
+   "FFA Member" means a person who, at the time of receiving, downloading,
+   installing, copying, modifying, or otherwise using the Software, is an
+   active, paid, or otherwise officially recognized member of the Future
+   Fiction Academy (https://futurefictionacademy.com or its successor),
+   in good standing under that organization's then-current membership
+   policies.
+
+   "Licensor" means GML Publishing LLC.
+
+2. Grant of license
+
+   Permission is hereby granted, free of charge, to any FFA Member
+   obtaining a copy of this Software and associated documentation files,
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or
+   sell copies of the Software, subject to the following conditions:
+
+   a. The above copyright notice and this entire license shall be
+      included in all copies or substantial portions of the Software.
+
+   b. Any further distribution, sublicensing, or sale of the Software
+      may only be made to other FFA Members. The recipient must be an
+      FFA Member at the time of receipt. The redistributor is responsible
+      for verifying the recipient's FFA membership.
+
+   c. The recipient's rights under this license terminate automatically,
+      without notice, if the recipient ceases to be an FFA Member.
+
+3. Restrictions
+
+   Persons who are not FFA Members are granted no rights of any kind under
+   this license. Use, copying, modification, distribution, public display,
+   or any other exploitation of the Software by a non-member is prohibited
+   except as required by applicable law.
+
+   The Future Fiction Academy is not a party to this license, has no
+   obligations under it, and makes no representations regarding the
+   Software. Use of the FFA name above is solely to identify the class of
+   permitted licensees and does not imply endorsement.
+
+4. Disclaimer of warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+   NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+   BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+   ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+   CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+
+5. Severability
+
+   If any provision of this license is held unenforceable, the remaining
+   provisions shall continue in full force and effect.
