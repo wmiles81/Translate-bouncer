@@ -31,15 +31,22 @@ from server.config import Config, save_config
 
 
 @respx.mock
-def test_get_models_returns_ids(translate_root: Path) -> None:
+def test_get_models_returns_full_objects(translate_root: Path) -> None:
     save_config(Config(openrouter_api_key="sk-or-test"))
     respx.get("https://openrouter.ai/api/v1/models").mock(
-        return_value=httpx.Response(200, json={"data": [{"id": "a"}, {"id": "b"}]})
+        return_value=httpx.Response(200, json={"data": [
+            {"id": "a", "name": "Model A", "context_length": 1000},
+            {"id": "b", "name": "Model B", "context_length": 2000},
+        ]})
     )
     client = TestClient(create_app())
     r = client.get("/models")
     assert r.status_code == 200
-    assert r.json() == ["a", "b"]
+    body = r.json()
+    assert len(body) == 2
+    assert body[0]["id"] == "a"
+    assert body[1]["id"] == "b"
+    assert body[0]["context_length"] == 1000
 
 
 def test_get_models_returns_400_when_no_api_key(translate_root: Path) -> None:

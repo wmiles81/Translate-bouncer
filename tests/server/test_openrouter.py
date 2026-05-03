@@ -69,14 +69,24 @@ async def test_chat_raises_configuration_on_401(client: OpenRouterClient) -> Non
 
 
 @respx.mock
-async def test_list_models_returns_ids(client: OpenRouterClient) -> None:
+async def test_list_models_returns_full_objects(client: OpenRouterClient) -> None:
     respx.get("https://openrouter.example/api/v1/models").mock(
         return_value=httpx.Response(200, json={
             "data": [
-                {"id": "anthropic/claude-sonnet-4"},
-                {"id": "openai/gpt-5"},
+                {
+                    "id": "anthropic/claude-sonnet-4",
+                    "name": "Claude Sonnet 4",
+                    "created": 1735690000,
+                    "context_length": 200000,
+                    "pricing": {"prompt": "0.000003", "completion": "0.000015"},
+                    "supported_parameters": ["tools"],
+                },
+                {"id": "openai/gpt-5", "name": "GPT-5"},
             ]
         })
     )
-    ids = await client.list_models()
-    assert ids == ["anthropic/claude-sonnet-4", "openai/gpt-5"]
+    models = await client.list_models()
+    assert len(models) == 2
+    assert models[0]["id"] == "anthropic/claude-sonnet-4"
+    assert models[0]["context_length"] == 200000
+    assert models[1]["id"] == "openai/gpt-5"

@@ -19,7 +19,7 @@ def put_settings(cfg: Config) -> Config:
 
 
 @router.get("/models")
-async def get_models() -> list[str]:
+async def get_models() -> list[dict]:
     cfg = load_config()
     if not cfg.openrouter_api_key:
         raise HTTPException(status_code=400, detail="OpenRouter API key not configured")

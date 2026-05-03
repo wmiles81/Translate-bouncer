@@ -25,11 +25,17 @@ class OpenRouterClient:
             "X-Title": "Translate",
         }
 
-    async def list_models(self) -> List[str]:
+    async def list_models(self) -> List[dict]:
+        """Return the full list of model metadata from OpenRouter.
+
+        Each entry is the unmodified OpenRouter object: id, name, created,
+        context_length, pricing.{prompt,completion}, supported_parameters,
+        architecture, etc. The client picks what it needs.
+        """
         async with httpx.AsyncClient(timeout=30) as h:
             r = await h.get(f"{self.base_url}/models", headers=self._headers)
             r.raise_for_status()
-            return [m["id"] for m in r.json()["data"]]
+            return r.json()["data"]
 
     async def chat(
         self,
