@@ -79,7 +79,11 @@ class OpenRouterClient:
                             continue
                         raise last_exc
                     r.raise_for_status()
-                    return r.json()["choices"][0]["message"]["content"]
+                    # Some models return null content on empty completions or
+                    # safety-filter rejections; treat that as an empty string
+                    # so downstream parsers can produce a clean error.
+                    content = r.json()["choices"][0]["message"].get("content")
+                    return content if isinstance(content, str) else ""
                 except httpx.HTTPError as exc:
                     last_exc = TransientError(str(exc))
                     if attempt < total:
