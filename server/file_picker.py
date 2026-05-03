@@ -15,7 +15,7 @@ class UnsupportedPlatform(Exception):
 
 _FILE_SCRIPT = """tell application "System Events" to activate
 try
-\tPOSIX path of (choose file of type {"org.openxmlformats.wordprocessingml.document"} with prompt "Choose a .docx file")
+\tPOSIX path of (choose file with prompt "Choose a .docx file")
 on error
 \treturn ""
 end try"""
