@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -14,6 +14,7 @@ class IngestRequest(BaseModel):
     translated_path: str
     english_path: str
     language_pair: LanguagePair
+    on_collision: Literal["resume", "new-session"] = "new-session"
 
 
 class IngestResponse(BaseModel):
@@ -35,6 +36,7 @@ def post_book(req: IngestRequest) -> IngestResponse:
             english_path=Path(req.english_path),
             language_pair=(req.language_pair.from_, req.language_pair.to),
             ingestion=cfg.ingestion,
+            on_collision=req.on_collision,
         )
     except ChapterCountMismatch as exc:
         raise HTTPException(status_code=409, detail={

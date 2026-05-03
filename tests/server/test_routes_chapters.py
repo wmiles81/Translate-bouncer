@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.config import Config, save_config
+from server.errors import TransientError
 from server.main import create_app
 from server.routes import chapters as chapters_routes
 
@@ -88,3 +89,15 @@ def test_post_finalize_marks_done(app_with_book, monkeypatch) -> None:
     assert r.status_code == 200
     state = client.get(f"/books/{slug}/chapter/1/state").json()
     assert state["status"] == "done"
+
+
+def test_post_round_editor_returns_502_on_transient_error(app_with_book, monkeypatch) -> None:
+    client, slug = app_with_book
+    fake_client = AsyncMock()
+    fake_client.chat = AsyncMock(side_effect=TransientError("upstream 503"))
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda cfg: fake_client)
+    r = client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
+    assert r.status_code == 502
+    body = r.json()
+    assert body["detail"]["kind"] == "transient"
+    assert "503" in body["detail"]["message"]

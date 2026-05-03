@@ -56,3 +56,41 @@ def test_get_book_state_returns_meta(translate_root: Path, fixtures_dir: Path) -
     state = client.get(f"/books/{slug}").json()
     assert state["slug"] == slug
     assert len(state["chapters"]) == 3
+
+
+def test_post_book_with_on_collision_resume(translate_root: Path, fixtures_dir: Path) -> None:
+    client = TestClient(create_app())
+    # First ingest
+    r1 = client.post("/books", json={
+        "translated_path": str(fixtures_dir / "sample-fr-folder"),
+        "english_path":    str(fixtures_dir / "sample-en-folder"),
+        "language_pair":   {"from": "en", "to": "fr"},
+    })
+    slug1 = r1.json()["slug"]
+    # Second ingest with on_collision="resume" reuses the same slug
+    r2 = client.post("/books", json={
+        "translated_path": str(fixtures_dir / "sample-fr-folder"),
+        "english_path":    str(fixtures_dir / "sample-en-folder"),
+        "language_pair":   {"from": "en", "to": "fr"},
+        "on_collision":    "resume",
+    })
+    assert r2.status_code == 200
+    assert r2.json()["slug"] == slug1
+
+
+def test_post_book_default_on_collision_is_new_session(translate_root: Path, fixtures_dir: Path) -> None:
+    client = TestClient(create_app())
+    r1 = client.post("/books", json={
+        "translated_path": str(fixtures_dir / "sample-fr-folder"),
+        "english_path":    str(fixtures_dir / "sample-en-folder"),
+        "language_pair":   {"from": "en", "to": "fr"},
+    })
+    slug1 = r1.json()["slug"]
+    r2 = client.post("/books", json={
+        "translated_path": str(fixtures_dir / "sample-fr-folder"),
+        "english_path":    str(fixtures_dir / "sample-en-folder"),
+        "language_pair":   {"from": "en", "to": "fr"},
+    })
+    slug2 = r2.json()["slug"]
+    assert slug2 != slug1
+    assert slug2.endswith("-2")

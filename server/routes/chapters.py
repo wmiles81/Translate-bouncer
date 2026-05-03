@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from server.config import Config, load_config
 from server.docx_io import ParsedDoc
-from server.errors import ConfigurationError, RecoverableError
+from server.errors import ConfigurationError, RecoverableError, TransientError
 from server.finalize import FinalizeError, finalize_chapter
 from server.openrouter import OpenRouterClient
 from server.paths import book_dir
@@ -118,6 +118,9 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
     except RecoverableError as exc:
         EVENT_BUS.publish({"type": "error", "text": str(exc)})
         raise HTTPException(status_code=422, detail={"message": str(exc), "kind": "recoverable"})
+    except TransientError as exc:
+        EVENT_BUS.publish({"type": "error", "text": str(exc)})
+        raise HTTPException(status_code=502, detail={"message": str(exc), "kind": "transient"})
     except ConfigurationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     EVENT_BUS.publish({"type": "round_complete", "round": next_round, "stage": "editor"})
@@ -149,21 +152,27 @@ async def post_round_reviewer(slug: str, n: int, req: RoundRequest) -> dict:
     reviewer_template = next(v.text for v in reviewer_prompt.versions if v.id == reviewer_prompt.current)
 
     EVENT_BUS.publish({"type": "status", "text": f"Round {cm.current_round} — calling Reviewer ({req.model})..."})
-    result: ReviewerResult = await run_reviewer_pass(
-        client=client,
-        slug=slug,
-        chapter_n=n,
-        round_n=cm.current_round,
-        en_doc=en_doc,
-        target_doc=target_doc,
-        source_code=bm.language_pair.from_,
-        target_code=bm.language_pair.to,
-        reviewer_prompt_template=reviewer_template,
-        model=req.model,
-        on_retry=lambda attempt, total: EVENT_BUS.publish(
-            {"type": "status", "text": f"Round {cm.current_round} — retry {attempt}/{total}..."}
-        ),
-    )
+    try:
+        result: ReviewerResult = await run_reviewer_pass(
+            client=client,
+            slug=slug,
+            chapter_n=n,
+            round_n=cm.current_round,
+            en_doc=en_doc,
+            target_doc=target_doc,
+            source_code=bm.language_pair.from_,
+            target_code=bm.language_pair.to,
+            reviewer_prompt_template=reviewer_template,
+            model=req.model,
+            on_retry=lambda attempt, total: EVENT_BUS.publish(
+                {"type": "status", "text": f"Round {cm.current_round} — retry {attempt}/{total}..."}
+            ),
+        )
+    except TransientError as exc:
+        EVENT_BUS.publish({"type": "error", "text": str(exc)})
+        raise HTTPException(status_code=502, detail={"message": str(exc), "kind": "transient"})
+    except ConfigurationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     EVENT_BUS.publish({"type": "round_complete", "round": cm.current_round, "stage": "reviewer"})
     cm.models.reviewer = req.model
     cm.prompts_used.reviewer_version = reviewer_prompt.current
