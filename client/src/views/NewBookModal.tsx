@@ -14,12 +14,22 @@ export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModal
   const [from, setFrom] = useState(DEFAULT_SOURCE);
   const [to, setTo] = useState(DEFAULT_TARGET);
 
+  function cleanPath(s: string): string {
+    let v = s.trim();
+    if (v.length >= 2 && v[0] === v[v.length - 1] && (v[0] === "'" || v[0] === '"')) {
+      v = v.slice(1, -1).trim();
+    }
+    return v;
+  }
+
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!translated.trim() || !english.trim()) return;
+    const tr = cleanPath(translated);
+    const en = cleanPath(english);
+    if (!tr || !en) return;
     onSubmit({
-      translated_path: translated.trim(),
-      english_path: english.trim(),
+      translated_path: tr,
+      english_path: en,
       language_pair: { from, to },
     });
   }

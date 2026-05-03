@@ -26,14 +26,24 @@ def get_books() -> List[str]:
     return list_books()
 
 
+def _clean_path(s: str) -> str:
+    """Strip surrounding whitespace and matching wrapping quotes from a path string."""
+    s = s.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
+        s = s[1:-1].strip()
+    return s
+
+
 @router.post("/books", response_model=IngestResponse)
 def post_book(req: IngestRequest) -> IngestResponse:
     cfg = load_config()
     from pathlib import Path
+    translated_path = Path(_clean_path(req.translated_path))
+    english_path = Path(_clean_path(req.english_path))
     try:
         result = ingest_book(
-            translated_path=Path(req.translated_path),
-            english_path=Path(req.english_path),
+            translated_path=translated_path,
+            english_path=english_path,
             language_pair=(req.language_pair.from_, req.language_pair.to),
             ingestion=cfg.ingestion,
             on_collision=req.on_collision,
@@ -46,6 +56,10 @@ def post_book(req: IngestRequest) -> IngestResponse:
             "en_titles": exc.en_titles,
             "tr_titles": exc.tr_titles,
         })
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=f"path not found: {exc}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return IngestResponse(slug=result.slug)
 
 
