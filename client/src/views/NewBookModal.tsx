@@ -4,9 +4,10 @@ import type { IngestRequest } from "../api/books";
 interface NewBookModalProps {
   onSubmit: (req: IngestRequest) => void;
   onCancel: () => void;
+  error?: string | null;
 }
 
-export default function NewBookModal({ onSubmit, onCancel }: NewBookModalProps) {
+export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModalProps) {
   const [translated, setTranslated] = useState("");
   const [english, setEnglish] = useState("");
   const [from, setFrom] = useState("en");
@@ -29,6 +30,11 @@ export default function NewBookModal({ onSubmit, onCancel }: NewBookModalProps) 
         className="w-full max-w-lg rounded bg-white p-6 shadow-lg"
       >
         <h2 className="mb-4 text-lg font-semibold">New book</h2>
+        {error && (
+          <p className="mb-3 rounded border border-red-300 bg-red-50 px-2 py-1 text-sm text-red-700">
+            {error}
+          </p>
+        )}
         <div className="space-y-3">
           <label className="block">
             <span className="text-sm font-medium">Translated path</span>

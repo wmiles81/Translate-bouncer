@@ -10,6 +10,7 @@ export default function PromptEditor({ kind }: Props) {
   const { data, save, restore, remove, loading, error } = usePrompts(kind);
   const [draft, setDraft] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   if (loading) return <p className="text-sm text-gray-500">Loading {kind} prompt…</p>;
   if (error) return <p className="text-sm text-red-600">{error.message}</p>;
@@ -31,7 +32,11 @@ export default function PromptEditor({ kind }: Props) {
       <div className="mt-2 flex gap-2">
         <button
           type="button"
-          onClick={async () => { await save(text); setDraft(null); }}
+          onClick={async () => {
+            setActionError(null);
+            try { await save(text); setDraft(null); }
+            catch (e) { setActionError(e instanceof Error ? e.message : String(e)); }
+          }}
           disabled={text === currentText}
           className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-gray-300"
         >
@@ -64,7 +69,11 @@ export default function PromptEditor({ kind }: Props) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => restore(v.id)}
+                  onClick={async () => {
+                    setActionError(null);
+                    try { await restore(v.id); }
+                    catch (e) { setActionError(e instanceof Error ? e.message : String(e)); }
+                  }}
                   disabled={v.id === data.current}
                   className="rounded border border-gray-300 px-2 py-0.5 hover:bg-gray-50 disabled:opacity-40"
                 >
@@ -72,7 +81,12 @@ export default function PromptEditor({ kind }: Props) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { if (confirm(`Delete ${v.id}?`)) remove(v.id); }}
+                  onClick={async () => {
+                    if (!confirm(`Delete ${v.id}?`)) return;
+                    setActionError(null);
+                    try { await remove(v.id); }
+                    catch (e) { setActionError(e instanceof Error ? e.message : String(e)); }
+                  }}
                   disabled={v.id === data.current}
                   className="rounded border border-red-300 px-2 py-0.5 text-red-700 hover:bg-red-50 disabled:opacity-40"
                 >
@@ -82,6 +96,11 @@ export default function PromptEditor({ kind }: Props) {
             </li>
           ))}
         </ul>
+      )}
+      {actionError && (
+        <p className="mt-2 rounded border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700">
+          {actionError}
+        </p>
       )}
     </details>
   );

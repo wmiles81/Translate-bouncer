@@ -13,6 +13,8 @@ export default function SettingsRoute() {
   const [reviewerDefault, setReviewerDefault] = useState<string | null>(null);
   const [headingStyle, setHeadingStyle] = useState<string | null>(null);
   const [patternsText, setPatternsText] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   if (!settings && loading) return <div data-testid="settings-route" className="p-6">Loading…</div>;
   if (error) return <div data-testid="settings-route" className="p-6 text-red-600">{error.message}</div>;
@@ -24,15 +26,23 @@ export default function SettingsRoute() {
   const h = headingStyle ?? settings.ingestion.heading_style;
   const p = patternsText ?? settings.ingestion.fallback_patterns.join("\n");
 
-  const handleSave = () =>
-    save({
-      openrouter_api_key: k,
-      default_models: { editor: e, reviewer: r },
-      ingestion: {
-        heading_style: h,
-        fallback_patterns: p.split("\n").map((s) => s.trim()).filter(Boolean),
-      },
-    });
+  const handleSave = async () => {
+    setSaveError(null);
+    setSaved(false);
+    try {
+      await save({
+        openrouter_api_key: k,
+        default_models: { editor: e, reviewer: r },
+        ingestion: {
+          heading_style: h,
+          fallback_patterns: p.split("\n").map((s) => s.trim()).filter(Boolean),
+        },
+      });
+      setSaved(true);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   return (
     <div data-testid="settings-route" className="mx-auto max-w-2xl p-6">
@@ -109,13 +119,17 @@ export default function SettingsRoute() {
         </label>
       </section>
 
-      <button
-        type="button"
-        onClick={handleSave}
-        className="rounded bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700"
-      >
-        Save
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleSave}
+          className="rounded bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          Save
+        </button>
+        {saved && <span className="text-sm text-green-600">Saved</span>}
+        {saveError && <span className="text-sm text-red-600">{saveError}</span>}
+      </div>
 
       <section className="mt-10 space-y-6">
         <h2 className="text-sm font-semibold uppercase text-gray-500">Prompts</h2>

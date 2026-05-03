@@ -7,6 +7,7 @@ import NewBookModal from "./NewBookModal";
 export default function BookListRoute() {
   const { slugs, refresh, loading, error } = useBooks();
   const [showModal, setShowModal] = useState(false);
+  const [ingestError, setIngestError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   return (
@@ -52,13 +53,19 @@ export default function BookListRoute() {
 
       {showModal && (
         <NewBookModal
-          onCancel={() => setShowModal(false)}
+          onCancel={() => { setShowModal(false); setIngestError(null); }}
           onSubmit={async (req) => {
-            const out = await ingestBook(req);
-            setShowModal(false);
-            refresh();
-            navigate(`/book/${out.slug}`);
+            setIngestError(null);
+            try {
+              const out = await ingestBook(req);
+              setShowModal(false);
+              refresh();
+              navigate(`/book/${out.slug}`);
+            } catch (e) {
+              setIngestError(e instanceof Error ? e.message : String(e));
+            }
           }}
+          error={ingestError}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { finalizeChapter, runEditorRound, runReviewerRound } from "../api/chapters";
 import EnglishPane from "../components/EnglishPane";
@@ -27,13 +27,16 @@ export default function ChapterRoute() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("Idle");
 
-  // Initialize models from chapter meta or defaults
-  if (!editorModel && chapter.meta) {
-    setEditorModel(chapter.meta.models.editor || settings?.default_models.editor || "");
-  }
-  if (!reviewerModel && chapter.meta) {
-    setReviewerModel(chapter.meta.models.reviewer || settings?.default_models.reviewer || "");
-  }
+  // Initialize models from chapter meta or defaults (once meta + settings load)
+  useEffect(() => {
+    if (chapter.meta && !editorModel) {
+      setEditorModel(chapter.meta.models.editor || settings?.default_models.editor || "");
+    }
+    if (chapter.meta && !reviewerModel) {
+      setReviewerModel(chapter.meta.models.reviewer || settings?.default_models.reviewer || "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapter.meta, settings]);
 
   useEvents(
     useCallback((e) => {
