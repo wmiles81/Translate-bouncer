@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import ChapterListItem from "../components/ChapterListItem";
 import { useBook } from "../hooks/useBook";
+import BatchRunModal from "./BatchRunModal";
 
 export default function BookViewRoute() {
   const { slug = "" } = useParams<{ slug: string }>();
-  const { meta, loading, error } = useBook(slug);
+  const { meta, loading, error, refresh } = useBook(slug);
+  const [batchOpen, setBatchOpen] = useState(false);
 
   return (
     <div data-testid="book-view-route" className="mx-auto max-w-3xl p-6">
@@ -12,12 +15,23 @@ export default function BookViewRoute() {
         <Link to="/" className="text-sm text-blue-600 hover:underline">
           ← Books
         </Link>
-        <Link
-          to="/settings"
-          className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
-        >
-          Settings
-        </Link>
+        <div className="flex gap-2">
+          {meta && (
+            <button
+              type="button"
+              onClick={() => setBatchOpen(true)}
+              className="rounded bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Batch run…
+            </button>
+          )}
+          <Link
+            to="/settings"
+            className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
+          >
+            Settings
+          </Link>
+        </div>
       </header>
 
       {loading && <p className="text-gray-500">Loading…</p>}
@@ -45,6 +59,14 @@ export default function BookViewRoute() {
               <ChapterListItem key={c.n} bookSlug={meta.slug} chapter={c} />
             ))}
           </ul>
+
+          {batchOpen && (
+            <BatchRunModal
+              book={meta}
+              onClose={() => setBatchOpen(false)}
+              onCompleted={refresh}
+            />
+          )}
         </>
       )}
     </div>

@@ -1,0 +1,241 @@
+import { FormEvent, useRef, useState } from "react";
+import ModelPicker from "../components/ModelPicker";
+import { useModels } from "../hooks/useModels";
+import { useSettings } from "../hooks/useSettings";
+import { runBatch, type BatchEvent } from "../lib/batchRunner";
+import type { BookMeta, ChapterEntry } from "../types/api";
+
+interface Props {
+  book: BookMeta;
+  onClose: () => void;
+  onCompleted: () => void; // refresh book state after run
+}
+
+export default function BatchRunModal({ book, onClose, onCompleted }: Props) {
+  const { models } = useModels();
+  const { settings } = useSettings();
+
+  const total = book.chapters.length;
+  const [fromN, setFromN] = useState(1);
+  const [toN, setToN] = useState(total);
+  const [skipDone, setSkipDone] = useState(true);
+  const [editorModel, setEditorModel] = useState(settings?.default_models.editor ?? "");
+  const [reviewerModel, setReviewerModel] = useState(settings?.default_models.reviewer ?? "");
+  const [rounds, setRounds] = useState(2);
+  const [finalize, setFinalize] = useState(false);
+
+  const [running, setRunning] = useState(false);
+  const [events, setEvents] = useState<BatchEvent[]>([]);
+  const [summary, setSummary] = useState<{ completed: number; errors: number; stopped: boolean } | null>(null);
+  const stopRef = useRef(false);
+
+  function selectedChapters(): ChapterEntry[] {
+    let chs = book.chapters.filter((c) => c.n >= fromN && c.n <= toN);
+    if (skipDone) chs = chs.filter((c) => c.status !== "done");
+    return chs;
+  }
+
+  async function handleRun(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editorModel || !reviewerModel) return;
+    const chs = selectedChapters();
+    if (chs.length === 0) return;
+    stopRef.current = false;
+    setEvents([]);
+    setSummary(null);
+    setRunning(true);
+    try {
+      const result = await runBatch({
+        bookSlug: book.slug,
+        chapters: chs,
+        editorModel,
+        reviewerModel,
+        roundsPerChapter: rounds,
+        finalize,
+        shouldStop: () => stopRef.current,
+        onProgress: (ev) => setEvents((prev) => [...prev, ev]),
+      });
+      setSummary(result);
+    } finally {
+      setRunning(false);
+      onCompleted();
+    }
+  }
+
+  // Pull a friendly current-status line from the most recent event.
+  const lastEvent = events[events.length - 1];
+  let statusLine = "Ready.";
+  if (running && lastEvent) {
+    if (lastEvent.type === "chapter_start") {
+      statusLine = `Chapter ${lastEvent.chapterIndex}/${lastEvent.totalChapters}: ${lastEvent.chapterTitle}`;
+    } else if (lastEvent.type === "round_start") {
+      const stage = lastEvent.stage === "finalize" ? "finalizing" : `calling ${lastEvent.stage}`;
+      const round = lastEvent.roundN ? `round ${lastEvent.roundN}/${lastEvent.totalRounds} — ` : "";
+      statusLine = `Ch ${lastEvent.chapterN}: ${round}${stage}…`;
+    } else if (lastEvent.type === "round_done") {
+      statusLine = `Ch ${lastEvent.chapterN}: round ${lastEvent.roundN} complete`;
+    } else if (lastEvent.type === "chapter_done") {
+      statusLine = `Ch ${lastEvent.chapterN}: chapter complete`;
+    } else if (lastEvent.type === "error") {
+      statusLine = `Ch ${lastEvent.chapterN}: error — ${lastEvent.error}`;
+    }
+  }
+
+  const errors = events.filter((e) => e.type === "error");
+  const completed = events.filter((e) => e.type === "chapter_done").length;
+  const willRun = selectedChapters();
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded bg-white shadow-lg">
+        <header className="flex items-center justify-between border-b border-gray-200 px-4 py-2">
+          <h2 className="text-lg font-semibold">Batch run</h2>
+          <button
+            type="button"
+            onClick={running ? () => (stopRef.current = true) : onClose}
+            className="rounded border border-gray-300 px-2 py-0.5 text-sm hover:bg-gray-50"
+          >
+            {running ? "Stop after current chapter" : "Close"}
+          </button>
+        </header>
+
+        {!running && !summary && (
+          <form onSubmit={handleRun} className="space-y-4 p-4 text-sm">
+            <div className="flex items-end gap-3">
+              <label>
+                <span className="block text-xs font-medium text-gray-600">From chapter</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={total}
+                  value={fromN}
+                  onChange={(e) => setFromN(parseInt(e.target.value, 10) || 1)}
+                  className="mt-1 w-20 rounded border border-gray-300 px-2 py-1"
+                />
+              </label>
+              <label>
+                <span className="block text-xs font-medium text-gray-600">To chapter</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={total}
+                  value={toN}
+                  onChange={(e) => setToN(parseInt(e.target.value, 10) || total)}
+                  className="mt-1 w-20 rounded border border-gray-300 px-2 py-1"
+                />
+              </label>
+              <label className="ml-2 flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={skipDone}
+                  onChange={(e) => setSkipDone(e.target.checked)}
+                />
+                Skip done chapters
+              </label>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <ModelPicker
+                label="Editor"
+                value={editorModel}
+                models={models}
+                onChange={setEditorModel}
+              />
+              <ModelPicker
+                label="Reviewer"
+                value={reviewerModel}
+                models={models}
+                onChange={setReviewerModel}
+              />
+            </div>
+
+            <div className="flex items-center gap-4">
+              <label>
+                <span className="block text-xs font-medium text-gray-600">Rounds per chapter</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={rounds}
+                  onChange={(e) => setRounds(parseInt(e.target.value, 10) || 1)}
+                  className="mt-1 w-20 rounded border border-gray-300 px-2 py-1"
+                />
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={finalize}
+                  onChange={(e) => setFinalize(e.target.checked)}
+                />
+                Finalize each chapter when done
+              </label>
+            </div>
+
+            <p className="text-xs text-gray-500">
+              Will process <strong>{willRun.length}</strong> chapter{willRun.length === 1 ? "" : "s"}
+              {willRun.length > 0 && (
+                <>
+                  {" "}
+                  ({willRun[0].n}–{willRun[willRun.length - 1].n})
+                </>
+              )}{" "}
+              × {rounds} round{rounds === 1 ? "" : "s"} each.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={willRun.length === 0 || !editorModel || !reviewerModel}
+                className="rounded bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-300"
+              >
+                Run
+              </button>
+            </div>
+          </form>
+        )}
+
+        {(running || summary) && (
+          <div className="flex-1 overflow-y-auto p-4 text-sm">
+            <p className="mb-2 text-base">{statusLine}</p>
+            <p className="text-xs text-gray-500">
+              Completed: <strong>{completed}</strong> · Errors: <strong>{errors.length}</strong>
+              {summary && summary.stopped && <> · stopped by user</>}
+            </p>
+            {errors.length > 0 && (
+              <details className="mt-3 rounded border border-red-200 bg-red-50 p-2">
+                <summary className="cursor-pointer text-sm font-medium text-red-700">
+                  {errors.length} error{errors.length === 1 ? "" : "s"}
+                </summary>
+                <ul className="mt-2 space-y-1 text-xs">
+                  {errors.map((e, i) => (
+                    <li key={i}>
+                      Ch {e.chapterN}: {e.error}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {summary && (
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
