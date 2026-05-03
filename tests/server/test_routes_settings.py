@@ -22,3 +22,27 @@ def test_put_settings_persists(translate_root: Path) -> None:
     r2 = client.get("/settings")
     assert r2.json()["openrouter_api_key"] == "sk-or-test"
     assert r2.json()["default_models"]["editor"] == "anthropic/claude-sonnet-4"
+
+
+import httpx
+import respx
+
+from server.config import Config, save_config
+
+
+@respx.mock
+def test_get_models_returns_ids(translate_root: Path) -> None:
+    save_config(Config(openrouter_api_key="sk-or-test"))
+    respx.get("https://openrouter.ai/api/v1/models").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "a"}, {"id": "b"}]})
+    )
+    client = TestClient(create_app())
+    r = client.get("/models")
+    assert r.status_code == 200
+    assert r.json() == ["a", "b"]
+
+
+def test_get_models_returns_400_when_no_api_key(translate_root: Path) -> None:
+    client = TestClient(create_app())
+    r = client.get("/models")
+    assert r.status_code == 400
