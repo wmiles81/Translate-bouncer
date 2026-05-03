@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { finalizeChapter, runEditorRound, runReviewerRound } from "../api/chapters";
 import { ApiError } from "../api/client";
+import BatchControls from "../components/BatchControls";
 import EnglishPane from "../components/EnglishPane";
 import StatusBar, { type ActivityEntry } from "../components/StatusBar";
 import SuggestionsPane from "../components/SuggestionsPane";
@@ -12,7 +13,6 @@ import { useChapter } from "../hooks/useChapter";
 import { useEvents } from "../hooks/useEvents";
 import { useModels } from "../hooks/useModels";
 import { useSettings } from "../hooks/useSettings";
-import BatchRunModal from "./BatchRunModal";
 
 export default function ChapterRoute() {
   const { slug = "", n: nStr = "1" } = useParams<{ slug: string; n: string }>();
@@ -30,7 +30,6 @@ export default function ChapterRoute() {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [busySince, setBusySince] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [batchOpen, setBatchOpen] = useState(false);
 
   const appendActivity = useCallback((text: string, kind: ActivityEntry["kind"]) => {
     setActivity((prev) => {
@@ -131,7 +130,7 @@ export default function ChapterRoute() {
   }
 
   return (
-    <div data-testid="chapter-route" className="grid h-full grid-rows-[auto_1fr_auto] bg-gray-100">
+    <div data-testid="chapter-route" className="grid h-full grid-rows-[auto_1fr_auto_auto] bg-gray-100">
       <TopBar
         bookSlug={slug}
         chapters={book.chapters}
@@ -142,15 +141,7 @@ export default function ChapterRoute() {
         onEditorModelChange={setEditorModel}
         onReviewerModelChange={setReviewerModel}
         onChapterChange={(newN) => navigate(`/book/${slug}/chapter/${newN}`)}
-        onBatchRun={() => setBatchOpen(true)}
       />
-      {batchOpen && (
-        <BatchRunModal
-          book={book}
-          onClose={() => setBatchOpen(false)}
-          onCompleted={() => chapter.refresh()}
-        />
-      )}
       <main className="grid grid-cols-3 overflow-hidden">
         <EnglishPane doc={chapter.enDoc} />
         <WorkingPane doc={chapter.workingDoc} prevDoc={chapter.prevDoc} roundN={chapter.meta.current_round} />
@@ -161,6 +152,37 @@ export default function ChapterRoute() {
           currentRound={chapter.meta.current_round}
         />
       </main>
+      <BatchControls
+        chapters={book.chapters}
+        currentN={n}
+        bookSlug={slug}
+        editorModel={editorModel}
+        reviewerModel={reviewerModel}
+        disabled={busy}
+        onBatchStart={() => {
+          setBusy(true);
+          setBusySince(Date.now());
+        }}
+        onBatchEnd={() => {
+          setBusy(false);
+          setBusySince(null);
+          chapter.refresh();
+        }}
+        onProgress={(ev) => {
+          if (ev.type === "chapter_start") {
+            appendActivity(
+              `▶ Batch ch ${ev.chapterN} (${ev.chapterIndex}/${ev.totalChapters}): ${ev.chapterTitle ?? ""}`,
+              "status",
+            );
+          } else if (ev.type === "chapter_done") {
+            appendActivity(`✓ Batch ch ${ev.chapterN} done`, "complete");
+          } else if (ev.type === "error") {
+            appendActivity(`⚠ Batch ch ${ev.chapterN}: ${ev.error}`, "error");
+          } else if (ev.type === "done") {
+            appendActivity("✓ Batch complete", "complete");
+          }
+        }}
+      />
       <StatusBar
         activity={activity}
         busy={busy}
