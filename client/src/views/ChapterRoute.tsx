@@ -26,6 +26,21 @@ export default function ChapterRoute() {
   const [reviewerModel, setReviewerModel] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("Idle");
+  const [busySince, setBusySince] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+
+  // Tick the elapsed-time counter while a round is running so the user can
+  // see something is alive even when the model is slow to respond.
+  useEffect(() => {
+    if (!busy || busySince === null) {
+      setElapsed(0);
+      return;
+    }
+    const tick = () => setElapsed(Math.floor((Date.now() - busySince) / 1000));
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [busy, busySince]);
 
   // Initialize models from chapter meta or defaults (once meta + settings load)
   useEffect(() => {
@@ -48,6 +63,7 @@ export default function ChapterRoute() {
 
   const handleContinue = async () => {
     setBusy(true);
+    setBusySince(Date.now());
     try {
       await runEditorRound(slug, n, editorModel);
       await runReviewerRound(slug, n, reviewerModel);
@@ -56,11 +72,13 @@ export default function ChapterRoute() {
       setStatus(`⚠ ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
+      setBusySince(null);
     }
   };
 
   const handleDone = async () => {
     setBusy(true);
+    setBusySince(Date.now());
     try {
       await finalizeChapter(slug, n);
       await chapter.refresh();
@@ -69,6 +87,7 @@ export default function ChapterRoute() {
       setStatus(`⚠ ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
+      setBusySince(null);
     }
   };
 
@@ -95,7 +114,7 @@ export default function ChapterRoute() {
         <SuggestionsPane result={chapter.suggestions} />
       </main>
       <StatusBar
-        status={status}
+        status={busy && elapsed > 0 ? `${status} (${elapsed}s)` : status}
         busy={busy}
         canFinalize={chapter.meta.current_round > 0 && chapter.meta.status !== "done"}
         onContinue={handleContinue}

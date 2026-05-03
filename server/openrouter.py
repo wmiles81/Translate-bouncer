@@ -55,7 +55,7 @@ class OpenRouterClient:
         }
         total = len(retry_delays)
         last_exc: Optional[Exception] = None
-        async with httpx.AsyncClient(timeout=120) as h:
+        async with httpx.AsyncClient(timeout=600) as h:
             for attempt, delay in enumerate(retry_delays, start=1):
                 if attempt > 1 and on_retry is not None:
                     on_retry(attempt, total)
