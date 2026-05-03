@@ -6,7 +6,9 @@ from enum import Enum
 from pathlib import Path
 from typing import List
 
-from server.chapter_split import SplitChapter
+from server.chapter_split import SplitChapter, split_docx
+from server.config import IngestionConfig
+from server.docx_io import parse_docx
 
 
 class SourceFormat(str, Enum):
@@ -43,6 +45,21 @@ def detect_format(path: Path | str) -> SourceFormat:
     if p.suffix.lower() == ".docx":
         return SourceFormat.SINGLE_DOCX
     raise ValueError(f"unsupported source: {p}")
+
+
+def read_chapters(source: Path | str, ingestion: IngestionConfig) -> List[SplitChapter]:
+    """Return ordered chapters from either a folder of .docx files or one whole-book .docx."""
+    fmt = detect_format(source)
+    p = Path(source)
+    if fmt == SourceFormat.FOLDER:
+        files = sorted(child for child in p.iterdir() if child.suffix.lower() == ".docx")
+        return [SplitChapter(title=f.stem, doc=parse_docx(f)) for f in files]
+    # single-docx
+    return split_docx(
+        p,
+        heading_style=ingestion.heading_style,
+        fallback_patterns=ingestion.fallback_patterns,
+    )
 
 
 def ingest_book(*args, **kwargs):
