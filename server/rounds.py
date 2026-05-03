@@ -13,13 +13,20 @@ from server.payload import PayloadParseError, parse_target_lines, render_payload
 
 LANGUAGE_NAMES = {
     "en": "English",
+    "en-gb": "British English",
     "fr": "French",
     "es": "Spanish",
+    "es-es": "European Spanish",
+    "es-419": "Latin American Spanish",
     "de": "German",
     "it": "Italian",
     "pt": "Portuguese",
+    "pt-pt": "European Portuguese",
+    "pt-br": "Brazilian Portuguese",
     "nl": "Dutch",
     "pl": "Polish",
+    "uk": "Ukrainian",
+    "sv": "Swedish",
     "ru": "Russian",
     "ja": "Japanese",
     "zh": "Chinese",
@@ -30,7 +37,19 @@ LANGUAGE_NAMES = {
 
 
 def _lang_name(code: str) -> str:
-    return LANGUAGE_NAMES.get(code.lower(), code.upper())
+    """Resolve a language code to a display name.
+
+    Tries the full code first (e.g. "pt-BR" -> "Brazilian Portuguese"), then
+    falls back to the base subtag (e.g. "pt-XX" -> "Portuguese"), then
+    uppercases the original code as a last resort.
+    """
+    key = code.lower()
+    if key in LANGUAGE_NAMES:
+        return LANGUAGE_NAMES[key]
+    base = key.split("-", 1)[0]
+    if base in LANGUAGE_NAMES:
+        return LANGUAGE_NAMES[base]
+    return code.upper()
 
 
 def render_editor_prompt(*, template: str, target_code: str) -> str:

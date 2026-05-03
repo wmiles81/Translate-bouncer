@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import type { IngestRequest } from "../api/books";
+import { DEFAULT_SOURCE, DEFAULT_TARGET, LANGUAGES } from "../lib/languages";
 
 interface NewBookModalProps {
   onSubmit: (req: IngestRequest) => void;
@@ -10,8 +11,8 @@ interface NewBookModalProps {
 export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModalProps) {
   const [translated, setTranslated] = useState("");
   const [english, setEnglish] = useState("");
-  const [from, setFrom] = useState("en");
-  const [to, setTo] = useState("fr");
+  const [from, setFrom] = useState(DEFAULT_SOURCE);
+  const [to, setTo] = useState(DEFAULT_TARGET);
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -59,21 +60,27 @@ export default function NewBookModal({ onSubmit, onCancel, error }: NewBookModal
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-sm font-medium">Source language</span>
-              <input
-                type="text"
+              <select
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
-                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
-              />
+                className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1"
+              >
+                {LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code}>{l.name}</option>
+                ))}
+              </select>
             </label>
             <label className="block">
               <span className="text-sm font-medium">Target language</span>
-              <input
-                type="text"
+              <select
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
-              />
+                className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1"
+              >
+                {LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code}>{l.name}</option>
+                ))}
+              </select>
             </label>
           </div>
         </div>

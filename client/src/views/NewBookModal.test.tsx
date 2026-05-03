@@ -12,19 +12,42 @@ describe("NewBookModal", () => {
     expect(screen.getByLabelText(/target language/i)).toBeInTheDocument();
   });
 
-  it("calls onSubmit with the typed values", async () => {
+  it("calls onSubmit with selected values (defaults: en source, fr target)", async () => {
     const onSubmit = vi.fn();
     render(<NewBookModal onSubmit={onSubmit} onCancel={() => {}} />);
     await userEvent.type(screen.getByLabelText(/translated path/i), "/path/to/fr");
     await userEvent.type(screen.getByLabelText(/english path/i), "/path/to/en");
-    await userEvent.clear(screen.getByLabelText(/target language/i));
-    await userEvent.type(screen.getByLabelText(/target language/i), "fr");
     await userEvent.click(screen.getByRole("button", { name: /ingest/i }));
     expect(onSubmit).toHaveBeenCalledWith({
       translated_path: "/path/to/fr",
       english_path: "/path/to/en",
       language_pair: { from: "en", to: "fr" },
     });
+  });
+
+  it("language selectors are dropdowns with English default for source", () => {
+    render(<NewBookModal onSubmit={() => {}} onCancel={() => {}} />);
+    const source = screen.getByLabelText(/source language/i) as HTMLSelectElement;
+    const target = screen.getByLabelText(/target language/i) as HTMLSelectElement;
+    expect(source.tagName).toBe("SELECT");
+    expect(target.tagName).toBe("SELECT");
+    expect(source.value).toBe("en");
+    expect(target.value).toBe("fr");
+  });
+
+  it("emits BCP47-style codes (e.g. pt-BR) when a regional variant is selected", async () => {
+    const onSubmit = vi.fn();
+    render(<NewBookModal onSubmit={onSubmit} onCancel={() => {}} />);
+    await userEvent.type(screen.getByLabelText(/translated path/i), "/p");
+    await userEvent.type(screen.getByLabelText(/english path/i), "/p");
+    await userEvent.selectOptions(
+      screen.getByLabelText(/target language/i),
+      "pt-BR"
+    );
+    await userEvent.click(screen.getByRole("button", { name: /ingest/i }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ language_pair: { from: "en", to: "pt-BR" } })
+    );
   });
 
   it("calls onCancel when Cancel is clicked", async () => {
