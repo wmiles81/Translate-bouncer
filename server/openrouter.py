@@ -52,6 +52,9 @@ class OpenRouterClient:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
+            # Generous cap so long chapter outputs and reviewer suggestion
+            # lists don't get truncated mid-response.
+            "max_tokens": 16384,
         }
         total = len(retry_delays)
         last_exc: Optional[Exception] = None

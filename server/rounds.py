@@ -136,29 +136,61 @@ class ReviewerResult(BaseModel):
 
 
 _JSON_LIST_RE = re.compile(r"\[\s*[\{\]].*\]", re.DOTALL)
+_FENCE_RE = re.compile(r"^```(?:json)?\s*\n(.*?)\n```\s*$", re.DOTALL)
+# Fallback per-suggestion extractor for malformed/truncated JSON. Captures any
+# JSON object literal that has both `quote` and `comment` string fields.
+_SUGGESTION_RE = re.compile(
+    r'\{\s*"quote"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"comment"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}',
+    re.DOTALL,
+)
+
+
+def _strip_fence(s: str) -> str:
+    """Remove a surrounding ```json ... ``` markdown fence if present."""
+    m = _FENCE_RE.match(s.strip())
+    return m.group(1).strip() if m else s
 
 
 def _try_parse_suggestions(raw: str) -> List[Suggestion]:
-    candidate = raw.strip()
-    # If the model wrapped JSON in prose, try to extract the first JSON list.
-    if not candidate.startswith("["):
+    candidate = _strip_fence(raw.strip())
+    # First try strict JSON: extract the first JSON list (e.g. wrapped in prose).
+    parsed: list | None = None
+    if candidate.startswith("["):
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            parsed = None
+    else:
         m = _JSON_LIST_RE.search(candidate)
         if m:
-            candidate = m.group(0)
-        else:
-            return []
-    try:
-        data = json.loads(candidate)
-    except json.JSONDecodeError:
-        return []
+            try:
+                parsed = json.loads(m.group(0))
+            except json.JSONDecodeError:
+                parsed = None
+
     out: List[Suggestion] = []
-    for i, item in enumerate(data, start=1):
-        if not isinstance(item, dict):
-            continue
-        q = item.get("quote")
-        c = item.get("comment")
-        if isinstance(q, str) and isinstance(c, str):
-            out.append(Suggestion(id=i, quote=q, comment=c))
+    if isinstance(parsed, list):
+        for i, item in enumerate(parsed, start=1):
+            if not isinstance(item, dict):
+                continue
+            q = item.get("quote")
+            c = item.get("comment")
+            if isinstance(q, str) and isinstance(c, str):
+                out.append(Suggestion(id=i, quote=q, comment=c))
+
+    # Fall back to per-object regex extraction. This recovers suggestions from
+    # responses that are truncated mid-array, missing brackets, or otherwise
+    # not valid top-level JSON.
+    if not out:
+        for i, m in enumerate(_SUGGESTION_RE.finditer(candidate), start=1):
+            try:
+                q = json.loads(f'"{m.group(1)}"')
+                c = json.loads(f'"{m.group(2)}"')
+            except json.JSONDecodeError:
+                continue
+            if isinstance(q, str) and isinstance(c, str):
+                out.append(Suggestion(id=i, quote=q, comment=c))
+
     return out
 
 
