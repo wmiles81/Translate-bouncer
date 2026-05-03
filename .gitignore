@@ -35,3 +35,10 @@ Sessions/
 
 client/node_modules/
 client/dist/
+
+# tsc -b emits these next to the .ts config files; keep them out of the repo
+client/*.tsbuildinfo
+client/tailwind.config.js
+client/tailwind.config.d.ts
+client/vite.config.js
+client/vite.config.d.ts
