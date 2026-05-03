@@ -12,6 +12,7 @@ import { useChapter } from "../hooks/useChapter";
 import { useEvents } from "../hooks/useEvents";
 import { useModels } from "../hooks/useModels";
 import { useSettings } from "../hooks/useSettings";
+import BatchRunModal from "./BatchRunModal";
 
 export default function ChapterRoute() {
   const { slug = "", n: nStr = "1" } = useParams<{ slug: string; n: string }>();
@@ -29,6 +30,7 @@ export default function ChapterRoute() {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [busySince, setBusySince] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [batchOpen, setBatchOpen] = useState(false);
 
   const appendActivity = useCallback((text: string, kind: ActivityEntry["kind"]) => {
     setActivity((prev) => {
@@ -140,7 +142,15 @@ export default function ChapterRoute() {
         onEditorModelChange={setEditorModel}
         onReviewerModelChange={setReviewerModel}
         onChapterChange={(newN) => navigate(`/book/${slug}/chapter/${newN}`)}
+        onBatchRun={() => setBatchOpen(true)}
       />
+      {batchOpen && (
+        <BatchRunModal
+          book={book}
+          onClose={() => setBatchOpen(false)}
+          onCompleted={() => chapter.refresh()}
+        />
+      )}
       <main className="grid grid-cols-3 overflow-hidden">
         <EnglishPane doc={chapter.enDoc} />
         <WorkingPane doc={chapter.workingDoc} prevDoc={chapter.prevDoc} roundN={chapter.meta.current_round} />

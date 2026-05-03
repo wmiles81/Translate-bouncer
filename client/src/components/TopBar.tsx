@@ -12,6 +12,7 @@ interface Props {
   onEditorModelChange: (v: string) => void;
   onReviewerModelChange: (v: string) => void;
   onChapterChange: (n: number) => void;
+  onBatchRun?: () => void;
 }
 
 export default function TopBar({
@@ -24,6 +25,7 @@ export default function TopBar({
   onEditorModelChange,
   onReviewerModelChange,
   onChapterChange,
+  onBatchRun,
 }: Props) {
   return (
     <header className="flex items-center gap-4 border-b border-gray-200 bg-white px-4 py-2">
@@ -49,6 +51,15 @@ export default function TopBar({
       <div className="ml-auto flex items-center gap-4">
         <ModelPicker label="Editor" value={editorModel} models={models} onChange={onEditorModelChange} />
         <ModelPicker label="Reviewer" value={reviewerModel} models={models} onChange={onReviewerModelChange} />
+        {onBatchRun && (
+          <button
+            type="button"
+            onClick={onBatchRun}
+            className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
+          >
+            ⏵ Batch run
+          </button>
+        )}
         <Link to="/settings" className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50">
           ⚙ Settings
         </Link>
