@@ -192,3 +192,44 @@ def post_finalize(slug: str, n: int) -> dict:
     except FinalizeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return load_chapter_meta(slug, n=n).model_dump()
+
+
+@router.get("/books/{slug}/chapter/{n}/docs")
+def get_chapter_docs(slug: str, n: int) -> dict:
+    """Return parsed-doc JSON for english, working (latest), previous, and reviewer suggestions."""
+    try:
+        load_book_meta(slug)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"book not found: {slug}")
+    cm = load_chapter_meta(slug, n=n)
+    bd = book_dir(slug)
+    en_path = bd / "source-en" / f"ch{n:02d}.json"
+    tr_path = bd / "source-translated" / f"ch{n:02d}.json"
+    if not en_path.exists() or not tr_path.exists():
+        raise HTTPException(status_code=404, detail=f"chapter {n} not in book {slug}")
+
+    english = ParsedDoc.model_validate_json(en_path.read_text()).model_dump()
+    if cm.current_round < 1:
+        working = ParsedDoc.model_validate_json(tr_path.read_text()).model_dump()
+        previous = None
+    else:
+        wp = bd / "chapters" / f"ch{n:02d}" / f"round-{cm.current_round}-editor.json"
+        working = ParsedDoc.model_validate_json(wp.read_text()).model_dump()
+        if cm.current_round == 1:
+            previous = ParsedDoc.model_validate_json(tr_path.read_text()).model_dump()
+        else:
+            pp = bd / "chapters" / f"ch{n:02d}" / f"round-{cm.current_round - 1}-editor.json"
+            previous = ParsedDoc.model_validate_json(pp.read_text()).model_dump()
+
+    sp = bd / "chapters" / f"ch{n:02d}" / f"round-{cm.current_round}-reviewer.json"
+    suggestions = None
+    if sp.exists():
+        import json
+        suggestions = json.loads(sp.read_text())
+
+    return {
+        "english": english,
+        "working": working,
+        "previous": previous,
+        "suggestions": suggestions,
+    }

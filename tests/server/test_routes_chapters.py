@@ -101,3 +101,34 @@ def test_post_round_editor_returns_502_on_transient_error(app_with_book, monkeyp
     body = r.json()
     assert body["detail"]["kind"] == "transient"
     assert "503" in body["detail"]["message"]
+
+
+def test_get_chapter_docs_returns_english_and_translated(app_with_book) -> None:
+    client, slug = app_with_book
+    r = client.get(f"/books/{slug}/chapter/1/docs")
+    assert r.status_code == 200
+    body = r.json()
+    assert "english" in body
+    assert "working" in body  # source-translated when no round yet
+    assert body["previous"] is None  # no prior round
+    assert body["suggestions"] is None
+    # English doc has a non-empty paragraphs list
+    assert len(body["english"]["paragraphs"]) > 0
+
+
+def test_get_chapter_docs_after_editor_round(app_with_book, monkeypatch) -> None:
+    client, slug = app_with_book
+    fake_client = AsyncMock()
+    fake_client.chat = AsyncMock(return_value=(
+        "[1]\nFR: # Chapitre 1\n\n"
+        "[2]\nFR: Le matin où tout commença, il pleuvait encore.\n\n"
+        "[3]\nFR: Elle pensa : « Pourquoi moi ? »\n\n"
+        "[4]\nFR: La fenêtre était *froide* sous sa main.\n"
+    ))
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda cfg: fake_client)
+    client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
+    r = client.get(f"/books/{slug}/chapter/1/docs")
+    body = r.json()
+    # Working doc is now the editor's output, previous is the source-translated
+    assert body["working"]["paragraphs"][0]["text"] == "Chapitre 1"
+    assert body["previous"] is not None
