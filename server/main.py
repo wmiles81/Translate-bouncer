@@ -22,4 +22,7 @@ def create_app() -> FastAPI:
     from server.routes import prompts as prompts_routes
     app.include_router(prompts_routes.router)
 
+    from server.routes import books as books_routes
+    app.include_router(books_routes.router)
+
     return app
