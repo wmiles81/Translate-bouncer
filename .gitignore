@@ -32,3 +32,6 @@ dist-ssr/
 
 # Local session/scratch artifacts (created by IDE or external tools)
 Sessions/
+
+client/node_modules/
+client/dist/
