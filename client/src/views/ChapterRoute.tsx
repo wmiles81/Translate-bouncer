@@ -29,6 +29,7 @@ export default function ChapterRoute() {
   const [reviewerModel, setReviewerModel] = useState("");
   const [busy, setBusy] = useState(false);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [stream, setStream] = useState("");
   const [busySince, setBusySince] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
 
@@ -71,13 +72,22 @@ export default function ChapterRoute() {
 
   useEvents(
     useCallback((e) => {
-      if (e.type === "status") appendActivity(e.text, "status");
-      else if (e.type === "round_complete")
+      if (e.type === "status") {
+        appendActivity(e.text, "status");
+        if (e.phase === "sent") setStream(""); // new round: reset live output
+      } else if (e.type === "token") {
+        // Live model output. Keep only a rolling tail so the buffer can't grow unbounded.
+        setStream((prev) => (prev + e.text).slice(-4000));
+      } else if (e.type === "round_complete") {
         appendActivity(
           `✓ Ch ${e.chapter ?? "?"} R${e.round} ${e.stage} complete`,
           "complete",
         );
-      else if (e.type === "error") appendActivity(`⚠ ${e.text}`, "error");
+        setStream("");
+      } else if (e.type === "error") {
+        appendActivity(`⚠ ${e.text}`, "error");
+        setStream("");
+      }
     }, [appendActivity])
   );
 
@@ -198,6 +208,7 @@ export default function ChapterRoute() {
       />
       <StatusBar
         activity={activity}
+        stream={stream}
         busy={busy}
         elapsed={elapsed}
         canFinalize={chapter.meta.current_round > 0 && chapter.meta.status !== "done"}

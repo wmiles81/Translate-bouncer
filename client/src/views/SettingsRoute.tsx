@@ -3,13 +3,14 @@ import { Link } from "react-router-dom";
 import ModelBrowser from "../components/ModelBrowser";
 import PromptEditor from "../components/PromptEditor";
 import { useModels } from "../hooks/useModels";
+import { useProviders } from "../hooks/useProviders";
 import { useSettings } from "../hooks/useSettings";
 
 export default function SettingsRoute() {
   const { settings, save, loading, error } = useSettings();
   const { models, refresh: refreshModels, error: modelsError } = useModels();
+  const { providers, refresh: refreshProviders } = useProviders();
 
-  const [apiKey, setApiKey] = useState<string | null>(null);
   const [editorDefault, setEditorDefault] = useState<string | null>(null);
   const [reviewerDefault, setReviewerDefault] = useState<string | null>(null);
   const [headingStyle, setHeadingStyle] = useState<string | null>(null);
@@ -24,7 +25,6 @@ export default function SettingsRoute() {
   if (error) return <div data-testid="settings-route" className="p-6 text-red-600">{error.message}</div>;
   if (!settings) return <div data-testid="settings-route" className="p-6">No settings.</div>;
 
-  const k = apiKey ?? settings.openrouter_api_key;
   const e = editorDefault ?? settings.default_models.editor;
   const r = reviewerDefault ?? settings.default_models.reviewer;
   const h = headingStyle ?? settings.ingestion.heading_style;
@@ -35,7 +35,7 @@ export default function SettingsRoute() {
     setSaved(false);
     try {
       await save({
-        openrouter_api_key: k,
+        openrouter_api_key: settings.openrouter_api_key,
         default_models: { editor: e, reviewer: r },
         ingestion: {
           heading_style: h,
@@ -48,25 +48,15 @@ export default function SettingsRoute() {
     }
   };
 
-  // Refresh the model list. The /models endpoint reads the API key from the
-  // server's config file, so we save the current key first if it's been edited
-  // but not yet persisted; otherwise the server returns 400 and the user sees
-  // nothing change.
+  // Refresh the model list and re-detect installed provider CLIs. No API key is
+  // involved anymore — models are served from a static catalog and providers are
+  // detected on the server.
   const handleRefreshModels = async () => {
     setRefreshError(null);
     setRefreshing(true);
     try {
-      if (apiKey !== null && apiKey !== settings.openrouter_api_key) {
-        await save({
-          openrouter_api_key: k,
-          default_models: { editor: e, reviewer: r },
-          ingestion: {
-            heading_style: h,
-            fallback_patterns: p.split("\n").map((s) => s.trim()).filter(Boolean),
-          },
-        });
-      }
       refreshModels();
+      refreshProviders();
     } catch (err) {
       setRefreshError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -82,16 +72,31 @@ export default function SettingsRoute() {
       </header>
 
       <section className="mb-6 space-y-3">
-        <h2 className="text-sm font-semibold uppercase text-gray-500">OpenRouter</h2>
-        <label className="block">
-          <span className="text-sm font-medium">API key</span>
-          <input
-            type="password"
-            value={k}
-            onChange={(ev) => setApiKey(ev.target.value)}
-            className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-sm"
-          />
-        </label>
+        <h2 className="text-sm font-semibold uppercase text-gray-500">
+          AI providers (your subscriptions)
+        </h2>
+        <p className="text-sm text-gray-600">
+          Translate routes each round through an AI CLI you've signed into. Install and
+          sign in to at least one; detected providers are shown below.
+        </p>
+        <ul className="space-y-1" data-testid="provider-list">
+          {providers.map((pr) => (
+            <li key={pr.id} className="flex items-center gap-2 text-sm">
+              <span
+                className={pr.detected ? "text-green-600" : "text-gray-400"}
+                aria-hidden
+              >
+                {pr.detected ? "●" : "○"}
+              </span>
+              <span className={pr.detected ? "text-gray-800" : "text-gray-400"}>
+                {pr.name}
+              </span>
+              <span className="text-xs text-gray-400">
+                {pr.detected ? "detected" : "not found"}
+              </span>
+            </li>
+          ))}
+        </ul>
         <div className="flex items-center gap-3">
           <button
             type="button"

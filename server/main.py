@@ -1,6 +1,8 @@
 """FastAPI app factory + CLI launcher."""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from server.sse import EventBus
@@ -9,8 +11,16 @@ from server.sse import EventBus
 EVENT_BUS = EventBus()
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    yield
+    # Terminate any persistent ACP agent subprocesses cleanly on shutdown.
+    from server.acp_providers import shutdown_manager
+    await shutdown_manager()
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="Translate", version="0.1.0")
+    app = FastAPI(title="Translate", version="0.1.0", lifespan=_lifespan)
 
     @app.get("/health")
     def health() -> dict:

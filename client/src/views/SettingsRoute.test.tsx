@@ -9,14 +9,20 @@ describe("SettingsRoute", () => {
       const u = String(url);
       if (u === "/settings") {
         return Promise.resolve(new Response(JSON.stringify({
-          openrouter_api_key: "sk-or-x",
-          default_models: { editor: "anthropic/claude-sonnet-4", reviewer: "openai/gpt-5" },
+          openrouter_api_key: "",
+          default_models: { editor: "claude-code/opus", reviewer: "gemini/gemini-2.5-pro" },
           ingestion: { heading_style: "Heading 1", fallback_patterns: ["^Chapter\\s+\\d+"] },
         }), { status: 200 }));
       }
       if (u === "/models") return Promise.resolve(new Response(JSON.stringify([
-        { id: "anthropic/claude-sonnet-4", name: "Claude Sonnet 4" },
-        { id: "openai/gpt-5", name: "GPT-5" },
+        { id: "claude-code/opus", name: "Claude Opus", pricing: { prompt: "0", completion: "0" } },
+        { id: "gemini/gemini-2.5-pro", name: "Gemini 2.5 Pro", pricing: { prompt: "0", completion: "0" } },
+      ]), { status: 200 }));
+      if (u === "/providers") return Promise.resolve(new Response(JSON.stringify([
+        { id: "claude-code", name: "Claude Code", detected: true },
+        { id: "gemini", name: "Gemini", detected: true },
+        { id: "codex", name: "Codex", detected: false },
+        { id: "qwen", name: "Qwen", detected: false },
       ]), { status: 200 }));
       if (u === "/prompts/editor" || u === "/prompts/reviewer") {
         return Promise.resolve(new Response(JSON.stringify({
@@ -35,7 +41,10 @@ describe("SettingsRoute", () => {
         <SettingsRoute />
       </MemoryRouter>
     );
-    await waitFor(() => expect(screen.getByLabelText(/api key/i)).toHaveValue("sk-or-x"));
-    expect(screen.getByLabelText(/heading style/i)).toHaveValue("Heading 1");
+    await waitFor(() => expect(screen.getByLabelText(/heading style/i)).toHaveValue("Heading 1"));
+    expect(screen.getByDisplayValue("claude-code/opus")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("gemini/gemini-2.5-pro")).toBeInTheDocument();
+    expect(screen.getByText("Claude Code")).toBeInTheDocument();
+    expect(screen.getByText("Gemini")).toBeInTheDocument();
   });
 });

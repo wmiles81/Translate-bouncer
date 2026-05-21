@@ -1,0 +1,136 @@
+from __future__ import annotations
+
+import pytest
+
+from server.acp_providers import (
+    AcpProviderClient,
+    detect_providers,
+    model_catalog,
+    split_model,
+)
+from server.errors import ConfigurationError, TransientError
+
+
+def test_split_model_variants() -> None:
+    assert split_model("claude-code/opus") == ("claude-code", "opus")
+    assert split_model("codex/default") == ("codex", "default")
+    assert split_model("qwen") == ("qwen", "")
+
+
+def test_model_catalog_shape() -> None:
+    cat = model_catalog()
+    assert cat, "catalog must not be empty"
+    for m in cat:
+        assert "/" in m["id"]  # provider/model so the frontend can split it
+        assert m["pricing"] == {"prompt": "0", "completion": "0"}
+        assert "name" in m and "context_length" in m
+
+
+def test_detect_providers_lists_all_four() -> None:
+    ids = {p["id"] for p in detect_providers()}
+    assert {"claude-code", "codex", "gemini", "qwen"} <= ids
+
+
+class _FakeManager:
+    """Stands in for AcpConnectionManager.run_turn at the chat() boundary."""
+
+    def __init__(self, *, chunks=None, exc=None, fail_times=0):
+        self.chunks = chunks or []
+        self.exc = exc
+        self.fail_times = fail_times
+        self.calls = 0
+        self.last_payload = None
+        self.last_provider = None
+        self.last_model_arg = None
+
+    async def run_turn(self, *, provider, model_arg, payload, on_token):
+        self.calls += 1
+        self.last_provider = provider
+        self.last_model_arg = model_arg
+        self.last_payload = payload
+        if self.exc is not None and self.calls <= self.fail_times:
+            raise self.exc
+        out = []
+        for c in self.chunks:
+            if on_token is not None:
+                on_token(c)
+            out.append(c)
+        return "".join(out)
+
+
+@pytest.fixture
+def client_with(monkeypatch):
+    def _make(**kw):
+        mgr = _FakeManager(**kw)
+        return AcpProviderClient(manager=mgr), mgr
+    return _make
+
+
+async def test_chat_accumulates_streamed_chunks_and_calls_on_token(client_with) -> None:
+    client, mgr = client_with(chunks=["bon", "jour"])
+    seen: list[str] = []
+    out = await client.chat(
+        model="gemini/gemini-2.5-pro",
+        system="Reply in French.",
+        user="hello",
+        on_token=seen.append,
+    )
+    assert out == "bonjour"
+    assert seen == ["bon", "jour"]
+    assert mgr.last_provider == "gemini"
+    assert mgr.last_model_arg == "gemini-2.5-pro"
+    # system + user are folded into one payload (ACP prompts carry user content only).
+    assert "Reply in French." in mgr.last_payload
+    assert "hello" in mgr.last_payload
+
+
+async def test_chat_retries_transient_then_succeeds(client_with) -> None:
+    client, mgr = client_with(
+        chunks=["ok"], exc=TransientError("blip"), fail_times=2
+    )
+    out = await client.chat(
+        model="gemini/gemini-2.5-pro",
+        system="s",
+        user="u",
+        retry_delays=[0, 0, 0],  # no real sleeps
+    )
+    assert out == "ok"
+    assert mgr.calls == 3
+
+
+async def test_chat_raises_transient_after_exhausting_retries(client_with) -> None:
+    client, mgr = client_with(exc=TransientError("down"), fail_times=99)
+    with pytest.raises(TransientError):
+        await client.chat(model="gemini/x", system="s", user="u", retry_delays=[0, 0, 0])
+    assert mgr.calls == 3
+
+
+async def test_chat_does_not_retry_configuration_error(client_with) -> None:
+    client, mgr = client_with(exc=ConfigurationError("sign in"), fail_times=99)
+    with pytest.raises(ConfigurationError):
+        await client.chat(model="claude-code/opus", system="s", user="u", retry_delays=[0, 0, 0])
+    assert mgr.calls == 1  # blocked immediately, no retry
+
+
+def test_classify_maps_auth_and_usage_to_configuration() -> None:
+    from server.acp_providers import _classify
+
+    assert isinstance(_classify(Exception("Please sign in to continue")), ConfigurationError)
+    assert isinstance(_classify(Exception("usage limit reached")), ConfigurationError)
+    assert isinstance(_classify(Exception("ENOENT: command not found")), ConfigurationError)
+    # Anything else is retryable.
+    assert isinstance(_classify(Exception("connection reset by peer")), TransientError)
+
+
+def test_streaming_client_denies_permissions() -> None:
+    import asyncio
+
+    from acp.schema import DeniedOutcome
+
+    from server.acp_providers import _StreamingClient
+
+    c = _StreamingClient()
+    resp = asyncio.run(
+        c.request_permission(options=[], session_id="s", tool_call=None)
+    )
+    assert isinstance(resp.outcome, DeniedOutcome)

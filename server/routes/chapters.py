@@ -7,11 +7,11 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from server.acp_providers import AcpProviderClient, detect_providers
 from server.config import Config, load_config
 from server.docx_io import ParsedDoc
 from server.errors import ConfigurationError, RecoverableError, TransientError
 from server.finalize import FinalizeError, finalize_chapter
-from server.openrouter import OpenRouterClient
 from server.paths import book_dir
 from server.prompts import PromptKind, load_prompts
 from server.rounds import (
@@ -39,10 +39,13 @@ class RoundRequest(BaseModel):
     model: str
 
 
-def _make_client(cfg: Config) -> OpenRouterClient:
-    if not cfg.openrouter_api_key:
-        raise ConfigurationError("OpenRouter API key not configured")
-    return OpenRouterClient(api_key=cfg.openrouter_api_key)
+def _make_client(cfg: Config) -> AcpProviderClient:
+    if not any(p["detected"] for p in detect_providers()):
+        raise ConfigurationError(
+            "No AI CLI detected. Install and sign in to at least one provider "
+            "(Claude Code, Codex, Gemini, or Qwen) — see the setup guide."
+        )
+    return AcpProviderClient()
 
 
 def _load_source(slug: str, n: int) -> tuple[ParsedDoc, ParsedDoc]:
@@ -137,6 +140,13 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
                 "phase": "retry",
                 "text": f"Ch {n} R{next_round} Editor — retry {attempt}/{total}...",
             }),
+            on_token=lambda chunk: EVENT_BUS.publish({
+                "type": "token",
+                "chapter": n,
+                "round": next_round,
+                "stage": "editor",
+                "text": chunk,
+            }),
         )
     except RecoverableError as exc:
         EVENT_BUS.publish({"type": "error", "chapter": n, "round": next_round, "stage": "editor", "text": str(exc)})
@@ -213,6 +223,13 @@ async def post_round_reviewer(slug: str, n: int, req: RoundRequest) -> dict:
                 "stage": "reviewer",
                 "phase": "retry",
                 "text": f"Ch {n} R{review_round} Reviewer — retry {attempt}/{total}...",
+            }),
+            on_token=lambda chunk: EVENT_BUS.publish({
+                "type": "token",
+                "chapter": n,
+                "round": review_round,
+                "stage": "reviewer",
+                "text": chunk,
             }),
         )
     except TransientError as exc:

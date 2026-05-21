@@ -125,6 +125,8 @@ export type AppEvent =
     }
   | { type: "round_complete"; round: number; stage: Stage; chapter?: number }
   | { type: "error"; text: string; chapter?: number; round?: number; stage?: Stage }
+  // Live model output streamed token-by-token while a round runs.
+  | { type: "token"; text: string; chapter?: number; round?: number; stage?: Stage }
   | { type: "stop" };
 
 // OpenRouter model metadata returned by GET /models.
@@ -139,6 +141,13 @@ export interface Model {
     completion?: string;
   };
   supported_parameters?: string[];
+}
+
+// Provider CLI detection returned by GET /providers.
+export interface Provider {
+  id: string;
+  name: string;
+  detected: boolean;
 }
 
 // Parsed-doc shape used by panes (mirrors server/docx_io.py)

@@ -1,8 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
+from server.acp_providers import detect_providers, model_catalog
 from server.config import Config, load_config, save_config
-from server.errors import ConfigurationError, TransientError
-from server.openrouter import OpenRouterClient
 
 router = APIRouter()
 
@@ -20,11 +19,12 @@ def put_settings(cfg: Config) -> Config:
 
 @router.get("/models")
 async def get_models() -> list[dict]:
-    cfg = load_config()
-    if not cfg.openrouter_api_key:
-        raise HTTPException(status_code=400, detail="OpenRouter API key not configured")
-    client = OpenRouterClient(api_key=cfg.openrouter_api_key)
-    try:
-        return await client.list_models()
-    except (ConfigurationError, TransientError) as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+    # CLI-routable models, in OpenRouter's object shape, with $0 pricing. No network call
+    # and no API key — the user's subscription covers it.
+    return model_catalog()
+
+
+@router.get("/providers")
+def get_providers() -> list[dict]:
+    """Which provider CLIs are installed on this machine (for the Settings status)."""
+    return detect_providers()

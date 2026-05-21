@@ -9,6 +9,8 @@ export interface ActivityEntry {
 
 interface StatusBarProps {
   activity: ActivityEntry[];
+  /** Live model output streamed during the active round (rolling tail). */
+  stream?: string;
   busy: boolean;
   elapsed: number;
   canFinalize: boolean;
@@ -26,6 +28,7 @@ function formatTime(ts: number): string {
 
 export default function StatusBar({
   activity,
+  stream,
   busy,
   elapsed,
   canFinalize,
@@ -33,11 +36,17 @@ export default function StatusBar({
   onDone,
 }: StatusBarProps) {
   const logRef = useRef<HTMLDivElement>(null);
+  const streamRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [activity]);
+
+  useEffect(() => {
+    const el = streamRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [stream]);
 
   const last = activity[activity.length - 1];
   const lastText = last ? last.text : "Idle";
@@ -68,6 +77,16 @@ export default function StatusBar({
           ))
         )}
       </div>
+      {stream ? (
+        <div
+          ref={streamRef}
+          data-testid="stream-preview"
+          className="max-h-24 overflow-y-auto whitespace-pre-wrap border-b border-gray-200 bg-white px-4 py-1 font-mono text-xs text-gray-500"
+        >
+          {stream}
+          <span className="animate-pulse">▌</span>
+        </div>
+      ) : null}
       <div className="flex items-center justify-between px-4 py-2">
         <span className="truncate text-sm text-gray-700">
           {busy && elapsed > 0 ? `${lastText} (${elapsed}s)` : lastText}

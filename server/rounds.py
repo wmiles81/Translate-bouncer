@@ -5,9 +5,9 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from server.acp_providers import AcpProviderClient
 from server.docx_io import ParsedDoc, write_docx
 from server.errors import RecoverableError
-from server.openrouter import OpenRouterClient
 from server.paths import book_dir
 from server.payload import PayloadParseError, parse_target_lines, render_payload
 
@@ -72,7 +72,7 @@ def _chapter_dir(slug: str, n: int) -> Path:
 
 async def run_editor_pass(
     *,
-    client: OpenRouterClient,
+    client: AcpProviderClient,
     slug: str,
     chapter_n: int,
     round_n: int,
@@ -84,6 +84,7 @@ async def run_editor_pass(
     prior_reviewer_suggestions: Optional[list],
     model: str,
     on_retry=None,
+    on_token=None,
 ) -> ParsedDoc:
     """Run the Editor pass and persist round-N-editor.{docx,json}."""
     payload = render_payload(en_doc, target_doc, source_code=source_code, target_code=target_code)
@@ -96,7 +97,9 @@ async def run_editor_pass(
             + payload
         )
     system = render_editor_prompt(template=editor_prompt_template, target_code=target_code)
-    raw = await client.chat(model=model, system=system, user=user_msg, on_retry=on_retry)
+    raw = await client.chat(
+        model=model, system=system, user=user_msg, on_retry=on_retry, on_token=on_token
+    )
 
     cdir = _chapter_dir(slug, chapter_n)
     # Save the raw response immediately so a parse failure leaves something on
@@ -202,7 +205,7 @@ def _try_parse_suggestions(raw: str) -> List[Suggestion]:
 
 async def run_reviewer_pass(
     *,
-    client: OpenRouterClient,
+    client: AcpProviderClient,
     slug: str,
     chapter_n: int,
     round_n: int,
@@ -213,10 +216,13 @@ async def run_reviewer_pass(
     reviewer_prompt_template: str,
     model: str,
     on_retry=None,
+    on_token=None,
 ) -> ReviewerResult:
     payload = render_payload(en_doc, target_doc, source_code=source_code, target_code=target_code)
     system = render_reviewer_prompt(template=reviewer_prompt_template, target_code=target_code)
-    raw = await client.chat(model=model, system=system, user=payload, on_retry=on_retry)
+    raw = await client.chat(
+        model=model, system=system, user=payload, on_retry=on_retry, on_token=on_token
+    )
 
     suggestions = _try_parse_suggestions(raw)
     result = ReviewerResult(
