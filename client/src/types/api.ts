@@ -134,6 +134,7 @@ export type AppEvent =
 export interface Model {
   id: string;
   name?: string;
+  description?: string;
   created?: number;
   context_length?: number;
   pricing?: {

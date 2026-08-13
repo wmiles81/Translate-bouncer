@@ -105,6 +105,10 @@ def model_catalog() -> list[dict]:
         {
             "id": f"{p['id']}/default",
             "name": f"{p['name']} — CLI default model",
+            "description": (
+                f"Runs on whatever model the {p['name']} CLI is currently configured "
+                "to use. Usage is covered by that subscription — no per-token billing."
+            ),
             "context_length": None,
             "pricing": {"prompt": "0", "completion": "0"},
             "supported_parameters": [],
