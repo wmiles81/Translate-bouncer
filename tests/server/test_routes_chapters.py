@@ -52,7 +52,7 @@ def test_post_round_editor_runs_pass(app_with_book, monkeypatch) -> None:
     # Force the route to use a mocked client.
     fake_client = AsyncMock()
     fake_client.chat = AsyncMock(return_value=_EDITOR_MOCK_RESPONSE)
-    monkeypatch.setattr(chapters_routes, "_make_client", lambda cfg: fake_client)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake_client)
 
     r = client.post(
         f"/books/{slug}/chapter/1/round/editor",
@@ -71,7 +71,7 @@ def test_post_round_reviewer_after_editor(app_with_book, monkeypatch) -> None:
         _EDITOR_MOCK_RESPONSE,
         '[{"quote": "Salut", "comment": "consider Bonjour"}]',
     ])
-    monkeypatch.setattr(chapters_routes, "_make_client", lambda cfg: fake_client)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake_client)
     client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
     r = client.post(f"/books/{slug}/chapter/1/round/reviewer", json={"model": "rv"})
     assert r.status_code == 200
@@ -83,7 +83,7 @@ def test_post_finalize_marks_done(app_with_book, monkeypatch) -> None:
     client, slug = app_with_book
     fake_client = AsyncMock()
     fake_client.chat = AsyncMock(return_value=_EDITOR_MOCK_RESPONSE)
-    monkeypatch.setattr(chapters_routes, "_make_client", lambda cfg: fake_client)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake_client)
     client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
     r = client.post(f"/books/{slug}/chapter/1/finalize")
     assert r.status_code == 200
@@ -95,7 +95,7 @@ def test_post_round_editor_returns_502_on_transient_error(app_with_book, monkeyp
     client, slug = app_with_book
     fake_client = AsyncMock()
     fake_client.chat = AsyncMock(side_effect=TransientError("upstream 503"))
-    monkeypatch.setattr(chapters_routes, "_make_client", lambda cfg: fake_client)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake_client)
     r = client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
     assert r.status_code == 502
     body = r.json()
@@ -116,6 +116,16 @@ def test_get_chapter_docs_returns_english_and_translated(app_with_book) -> None:
     assert len(body["english"]["paragraphs"]) > 0
 
 
+def test_round_rejects_unknown_provider_before_any_event(app_with_book) -> None:
+    client, slug = app_with_book
+    r = client.post(
+        f"/books/{slug}/chapter/1/round/editor",
+        json={"model": "anthropic/claude-sonnet-4"},
+    )
+    assert r.status_code == 400
+    assert "anthropic" in r.json()["detail"]
+
+
 def test_get_chapter_docs_after_editor_round(app_with_book, monkeypatch) -> None:
     client, slug = app_with_book
     fake_client = AsyncMock()
@@ -125,7 +135,7 @@ def test_get_chapter_docs_after_editor_round(app_with_book, monkeypatch) -> None
         "[3]\nFR: Elle pensa : « Pourquoi moi ? »\n\n"
         "[4]\nFR: La fenêtre était *froide* sous sa main.\n"
     ))
-    monkeypatch.setattr(chapters_routes, "_make_client", lambda cfg: fake_client)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake_client)
     client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
     r = client.get(f"/books/{slug}/chapter/1/docs")
     body = r.json()

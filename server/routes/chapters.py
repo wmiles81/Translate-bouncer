@@ -7,8 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from server.acp_providers import AcpProviderClient, detect_providers
-from server.config import Config, load_config
+from server.acp_providers import AcpProviderClient, require_provider
 from server.docx_io import ParsedDoc
 from server.errors import ConfigurationError, RecoverableError, TransientError
 from server.finalize import FinalizeError, finalize_chapter
@@ -39,13 +38,60 @@ class RoundRequest(BaseModel):
     model: str
 
 
-def _make_client(cfg: Config) -> AcpProviderClient:
-    if not any(p["detected"] for p in detect_providers()):
-        raise ConfigurationError(
-            "No AI CLI detected. Install and sign in to at least one provider "
-            "(Claude Code, Codex, Gemini, or Qwen) — see the setup guide."
-        )
+def _make_client(model: str) -> AcpProviderClient:
+    require_provider(model)
     return AcpProviderClient()
+
+
+class _TokenCoalescer:
+    """Buffers streamed chunks; publishes one token event per ~300 chars.
+
+    A 5000-token round would otherwise publish thousands of SSE events and force a
+    client re-render per token. Call ``flush()`` after the pass returns (success or
+    failure) so the tail is not lost.
+    """
+
+    def __init__(self, publish, threshold: int = 300) -> None:
+        self._publish = publish
+        self._threshold = threshold
+        self._buf: list[str] = []
+        self._size = 0
+
+    def __call__(self, chunk: str) -> None:
+        self._buf.append(chunk)
+        self._size += len(chunk)
+        if self._size >= self._threshold:
+            self.flush()
+
+    def flush(self) -> None:
+        if self._buf:
+            self._publish("".join(self._buf))
+            self._buf.clear()
+            self._size = 0
+
+
+def _round_callbacks(chapter: int, round_n: int, stage: str):
+    """on_retry / on_token / on_notice publishers shared by the editor and reviewer routes."""
+
+    def on_retry(attempt: int, total: int) -> None:
+        EVENT_BUS.publish({
+            "type": "status", "chapter": chapter, "round": round_n, "stage": stage,
+            "phase": "retry",
+            "text": f"Ch {chapter} R{round_n} {stage.capitalize()} — retry {attempt}/{total}...",
+        })
+
+    coalescer = _TokenCoalescer(lambda text: EVENT_BUS.publish({
+        "type": "token", "chapter": chapter, "round": round_n, "stage": stage, "text": text,
+    }))
+
+    def on_notice(text: str) -> None:
+        EVENT_BUS.publish({
+            "type": "status", "chapter": chapter, "round": round_n, "stage": stage,
+            "phase": "notice",
+            "text": f"Ch {chapter} R{round_n} {stage.capitalize()} — {text}",
+        })
+
+    return on_retry, coalescer, on_notice
 
 
 def _load_source(slug: str, n: int) -> tuple[ParsedDoc, ParsedDoc]:
@@ -85,9 +131,8 @@ def get_chapter_state(slug: str, n: int) -> dict:
 
 @router.post("/books/{slug}/chapter/{n}/round/editor")
 async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
-    cfg = load_config()
     try:
-        client = _make_client(cfg)
+        client = _make_client(req.model)
     except ConfigurationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -119,6 +164,7 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
         "source": src_desc,
         "text": f"Ch {n} R{next_round} → Editor ({req.model}) · source: {src_desc}",
     })
+    on_retry, on_token, on_notice = _round_callbacks(n, next_round, "editor")
     try:
         await run_editor_pass(
             client=client,
@@ -132,21 +178,9 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
             editor_prompt_template=editor_template,
             prior_reviewer_suggestions=suggestions,
             model=req.model,
-            on_retry=lambda attempt, total: EVENT_BUS.publish({
-                "type": "status",
-                "chapter": n,
-                "round": next_round,
-                "stage": "editor",
-                "phase": "retry",
-                "text": f"Ch {n} R{next_round} Editor — retry {attempt}/{total}...",
-            }),
-            on_token=lambda chunk: EVENT_BUS.publish({
-                "type": "token",
-                "chapter": n,
-                "round": next_round,
-                "stage": "editor",
-                "text": chunk,
-            }),
+            on_retry=on_retry,
+            on_token=on_token,
+            on_notice=on_notice,
         )
     except RecoverableError as exc:
         EVENT_BUS.publish({"type": "error", "chapter": n, "round": next_round, "stage": "editor", "text": str(exc)})
@@ -156,6 +190,8 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
         raise HTTPException(status_code=502, detail={"message": str(exc), "kind": "transient"})
     except ConfigurationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    finally:
+        on_token.flush()
     EVENT_BUS.publish({
         "type": "status",
         "chapter": n,
@@ -177,9 +213,8 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
 
 @router.post("/books/{slug}/chapter/{n}/round/reviewer")
 async def post_round_reviewer(slug: str, n: int, req: RoundRequest) -> dict:
-    cfg = load_config()
     try:
-        client = _make_client(cfg)
+        client = _make_client(req.model)
     except ConfigurationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -204,6 +239,7 @@ async def post_round_reviewer(slug: str, n: int, req: RoundRequest) -> dict:
         "source": src_desc,
         "text": f"Ch {n} R{review_round} → Reviewer ({req.model}) · source: {src_desc}",
     })
+    on_retry, on_token, on_notice = _round_callbacks(n, review_round, "reviewer")
     try:
         result: ReviewerResult = await run_reviewer_pass(
             client=client,
@@ -216,27 +252,17 @@ async def post_round_reviewer(slug: str, n: int, req: RoundRequest) -> dict:
             target_code=bm.language_pair.to,
             reviewer_prompt_template=reviewer_template,
             model=req.model,
-            on_retry=lambda attempt, total: EVENT_BUS.publish({
-                "type": "status",
-                "chapter": n,
-                "round": review_round,
-                "stage": "reviewer",
-                "phase": "retry",
-                "text": f"Ch {n} R{review_round} Reviewer — retry {attempt}/{total}...",
-            }),
-            on_token=lambda chunk: EVENT_BUS.publish({
-                "type": "token",
-                "chapter": n,
-                "round": review_round,
-                "stage": "reviewer",
-                "text": chunk,
-            }),
+            on_retry=on_retry,
+            on_token=on_token,
+            on_notice=on_notice,
         )
     except TransientError as exc:
         EVENT_BUS.publish({"type": "error", "chapter": n, "round": review_round, "stage": "reviewer", "text": str(exc)})
         raise HTTPException(status_code=502, detail={"message": str(exc), "kind": "transient"})
     except ConfigurationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    finally:
+        on_token.flush()
     n_sugg = len(result.suggestions) if hasattr(result, "suggestions") and result.suggestions else 0
     EVENT_BUS.publish({
         "type": "status",

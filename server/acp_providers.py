@@ -176,6 +176,31 @@ def split_model(model: str) -> tuple[str, str]:
     return provider, model_arg
 
 
+def require_provider(model: str) -> str:
+    """Validate that ``model`` names an installed provider; return the provider id.
+
+    Raises ConfigurationError with an actionable message otherwise — including the
+    stale-saved-default case where the model id predates the subscription switch
+    (e.g. an OpenRouter id like 'anthropic/claude-sonnet-4').
+    """
+    provider, _ = split_model(model)
+    if provider not in PROVIDER_LAUNCH:
+        valid = ", ".join(sorted(PROVIDER_LAUNCH))
+        raise ConfigurationError(
+            f"Unknown provider '{provider}' in model '{model}'. Valid providers: {valid}. "
+            "If this model came from a saved default, it may predate the switch to "
+            "subscription providers — pick a model from the list in Settings."
+        )
+    detected = {p["id"]: p["detected"] for p in detect_providers()}
+    if not detected.get(provider):
+        raise ConfigurationError(
+            f"{_PROVIDER_NAMES[provider]} is not installed (required for model "
+            f"'{model}'). Install and sign in to it, or pick a model from a "
+            "detected provider."
+        )
+    return provider
+
+
 class _StreamingClient(Client):
     """ACP client that denies all tools and forwards streamed assistant text.
 

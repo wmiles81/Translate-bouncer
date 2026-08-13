@@ -37,6 +37,30 @@ def test_detect_providers_lists_all_four() -> None:
     assert {"claude-code", "codex", "gemini", "qwen"} <= ids
 
 
+def test_require_provider_rejects_unknown_provider_with_guidance() -> None:
+    from server.acp_providers import require_provider
+
+    with pytest.raises(ConfigurationError) as ei:
+        require_provider("anthropic/claude-sonnet-4")  # stale OpenRouter-era id
+    msg = str(ei.value)
+    assert "anthropic" in msg
+    assert "claude-code" in msg  # lists the valid providers
+    assert "default" in msg.lower()  # hints that a saved default may be stale
+
+
+def test_require_provider_rejects_undetected_provider(monkeypatch) -> None:
+    import server.acp_providers as ap
+
+    monkeypatch.setattr(
+        ap, "detect_providers",
+        lambda: [{"id": pid, "name": ap._PROVIDER_NAMES[pid], "detected": pid == "gemini"}
+                 for pid in ap.PROVIDER_LAUNCH],
+    )
+    assert ap.require_provider("gemini/gemini-2.5-pro") == "gemini"
+    with pytest.raises(ConfigurationError, match="Claude Code"):
+        ap.require_provider("claude-code/opus")
+
+
 class _FakeManager:
     """Stands in for AcpConnectionManager.run_turn at the chat() boundary."""
 
