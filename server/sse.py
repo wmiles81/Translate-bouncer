@@ -11,10 +11,19 @@ class EventBus:
 
     def publish(self, event: dict) -> None:
         for q in list(self._subscribers):
-            q.put_nowait(event)
+            while True:
+                try:
+                    q.put_nowait(event)
+                    break
+                except asyncio.QueueFull:
+                    # Slow consumer: drop the oldest event rather than grow unboundedly.
+                    try:
+                        q.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
 
     async def subscribe(self, *, timeout: float | None = None) -> AsyncIterator[dict]:
-        q: asyncio.Queue = asyncio.Queue()
+        q: asyncio.Queue = asyncio.Queue(maxsize=1000)
         self._subscribers.add(q)
         try:
             while True:
