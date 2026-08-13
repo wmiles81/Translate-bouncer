@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+
 import pytest
 
+import server.acp_providers as ap
 from server.acp_providers import (
+    AcpConnectionManager,
     AcpProviderClient,
     detect_providers,
     model_catalog,
@@ -164,3 +170,99 @@ def test_detection_probes_the_spawn_path_and_all_required_binaries(monkeypatch, 
     assert detected["claude-code"] is False    # has `claude` but not `npx`
     assert detected["codex"] is False
     assert detected["qwen"] is False
+
+
+class _FakeAcpConnection:
+    """Stands in for acp's ClientSideConnection."""
+
+    def __init__(self, *, init_exc: Exception | None = None, init_hang: bool = False):
+        self.init_exc = init_exc
+        self.init_hang = init_hang
+        self.cancelled: list[str] = []
+        self.closed_sessions: list[str] = []
+
+    async def initialize(self, **kw):
+        if self.init_hang:
+            await asyncio.sleep(3600)
+        if self.init_exc is not None:
+            raise self.init_exc
+
+    async def new_session(self, **kw):
+        return SimpleNamespace(session_id="sid-1", models=None)
+
+    async def set_session_model(self, **kw):
+        pass
+
+    async def prompt(self, **kw):
+        pass
+
+    async def cancel(self, **kw):
+        self.cancelled.append(kw.get("session_id"))
+
+    async def close_session(self, **kw):
+        self.closed_sessions.append(kw.get("session_id"))
+
+
+def _fake_spawn(connections: list[_FakeAcpConnection], procs: list) -> object:
+    """Build a spawn_agent_process replacement that records kill() via proc.returncode."""
+
+    @asynccontextmanager
+    async def spawn(client, executable, *args, env=None):
+        conn = connections.pop(0)
+        proc = SimpleNamespace(returncode=None)
+        proc.kill = lambda: setattr(proc, "returncode", -9)
+        procs.append(proc)
+        try:
+            yield conn, proc
+        finally:
+            proc.kill()  # mirrors real behavior: CM exit terminates the subprocess
+
+    return spawn
+
+
+async def test_failed_initialize_terminates_the_spawned_process(monkeypatch) -> None:
+    procs: list = []
+    monkeypatch.setattr(
+        ap, "spawn_agent_process",
+        _fake_spawn([_FakeAcpConnection(init_exc=Exception("boom"))], procs),
+    )
+    mgr = AcpConnectionManager()
+    with pytest.raises(TransientError):
+        await mgr.get("gemini")
+    assert procs[0].returncode is not None, "orphaned agent process after failed initialize"
+    assert "gemini" not in mgr._conns
+    await mgr.aclose()
+
+
+async def test_hung_initialize_times_out_and_does_not_block_other_providers(monkeypatch) -> None:
+    procs: list = []
+    hung = _FakeAcpConnection(init_hang=True)
+    ok = _FakeAcpConnection()
+    monkeypatch.setattr(ap, "spawn_agent_process", _fake_spawn([hung, ok], procs))
+    monkeypatch.setattr(ap, "SPAWN_TIMEOUT", 0.05)
+    mgr = AcpConnectionManager()
+
+    async def spawn_hung():
+        with pytest.raises(TransientError):
+            await mgr.get("claude-code")
+
+    t = asyncio.create_task(spawn_hung())
+    await asyncio.sleep(0.01)
+    # A different provider must not queue behind claude-code's hung spawn.
+    conn = await asyncio.wait_for(mgr.get("gemini"), timeout=1.0)
+    assert conn is not None
+    await t
+    await mgr.aclose()
+
+
+async def test_aclose_discards_connections_and_removes_cwd(monkeypatch, tmp_path) -> None:
+    procs: list = []
+    monkeypatch.setattr(ap, "spawn_agent_process", _fake_spawn([_FakeAcpConnection()], procs))
+    mgr = AcpConnectionManager()
+    await mgr.get("gemini")
+    cwd = mgr._cwd
+    import os
+    assert os.path.isdir(cwd)
+    await mgr.aclose()
+    assert not os.path.isdir(cwd), "translate-acp-* temp dir leaked"
+    assert procs[0].returncode is not None

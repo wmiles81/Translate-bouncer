@@ -41,6 +41,8 @@ from server.errors import ConfigurationError, TransientError
 
 DEFAULT_RETRY_DELAYS = (1.0, 2.0, 4.0)  # 3 attempts at 1s, 2s, 4s
 PROMPT_TIMEOUT = 600.0  # seconds, matches the OpenRouter client
+SPAWN_TIMEOUT = 120.0  # spawn + initialize; npx may download the adapter on first use
+SESSION_TIMEOUT = 60.0  # new_session / set_session_model / close_session
 
 # provider id -> (executable, [args]) used to launch the agent in ACP mode.
 # All are Node-based; Claude/Codex go through a separate ACP adapter package.
@@ -201,19 +203,35 @@ class _Conn:
     proc: object  # asyncio subprocess.Process
     client: _StreamingClient
     lock: asyncio.Lock
+    stack: AsyncExitStack  # owns the subprocess; closing it terminates the agent
 
 
 class AcpConnectionManager:
     """Lazy pool of one persistent ACP connection per provider."""
 
     def __init__(self) -> None:
-        self._stack = AsyncExitStack()
         self._conns: dict[str, _Conn] = {}
-        self._spawn_lock = asyncio.Lock()
+        self._spawn_locks: dict[str, asyncio.Lock] = {
+            pid: asyncio.Lock() for pid in PROVIDER_LAUNCH
+        }
         self._cwd = tempfile.mkdtemp(prefix="translate-acp-")
 
     def _alive(self, conn: _Conn) -> bool:
         return getattr(conn.proc, "returncode", None) is None
+
+    async def _discard(self, provider: str, conn: _Conn) -> None:
+        """Remove a connection from the pool and terminate its agent (best-effort)."""
+        if self._conns.get(provider) is conn:
+            self._conns.pop(provider, None)
+        try:
+            if self._alive(conn):
+                conn.proc.kill()  # type: ignore[attr-defined]
+        except (ProcessLookupError, AttributeError):
+            pass
+        try:
+            await asyncio.wait_for(conn.stack.aclose(), timeout=10.0)
+        except Exception:  # noqa: BLE001 - already killed; nothing more to do
+            pass
 
     async def get(self, provider: str) -> _Conn:
         if provider not in PROVIDER_LAUNCH:
@@ -221,10 +239,12 @@ class AcpConnectionManager:
         existing = self._conns.get(provider)
         if existing is not None and self._alive(existing):
             return existing
-        async with self._spawn_lock:
+        async with self._spawn_locks[provider]:
             existing = self._conns.get(provider)
             if existing is not None and self._alive(existing):
                 return existing
+            if existing is not None:
+                await self._discard(provider, existing)
             conn = await self._spawn(provider)
             self._conns[provider] = conn
             return conn
@@ -236,14 +256,29 @@ class AcpConnectionManager:
         # Base Client methods have empty bodies (fs/terminal ops we never advertise), so
         # the type checker treats them as abstract; instantiation is verified safe.
         client = _StreamingClient()  # type: ignore[abstract]
+        stack = AsyncExitStack()
         try:
-            connection, proc = await self._stack.enter_async_context(
-                spawn_agent_process(client, executable, *args, env=env)
+            connection, proc = await asyncio.wait_for(
+                stack.enter_async_context(
+                    spawn_agent_process(client, executable, *args, env=env)
+                ),
+                timeout=SPAWN_TIMEOUT,
             )
-            await connection.initialize(protocol_version=PROTOCOL_VERSION)
+            await asyncio.wait_for(
+                connection.initialize(protocol_version=PROTOCOL_VERSION),
+                timeout=SPAWN_TIMEOUT,
+            )
         except Exception as exc:  # noqa: BLE001 - normalize to our error taxonomy
+            await stack.aclose()  # terminates the agent process if it was spawned
+            if isinstance(exc, asyncio.TimeoutError):
+                raise TransientError(
+                    f"{provider} agent did not respond within {SPAWN_TIMEOUT:.0f}s of launch"
+                ) from exc
             raise _classify(exc) from exc
-        return _Conn(connection=connection, proc=proc, client=client, lock=asyncio.Lock())
+        return _Conn(
+            connection=connection, proc=proc, client=client,
+            lock=asyncio.Lock(), stack=stack,
+        )
 
     @staticmethod
     def _resolve_model(model_arg: str, models_state) -> Optional[str]:
@@ -304,8 +339,9 @@ class AcpConnectionManager:
             return "".join(parts)
 
     async def aclose(self) -> None:
-        await self._stack.aclose()
-        self._conns.clear()
+        for provider, conn in list(self._conns.items()):
+            await self._discard(provider, conn)
+        shutil.rmtree(self._cwd, ignore_errors=True)
 
 
 # Process-global pool shared across requests; closed on app shutdown.
