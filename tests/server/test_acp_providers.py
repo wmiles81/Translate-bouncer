@@ -41,7 +41,7 @@ def test_require_provider_rejects_unknown_provider_with_guidance() -> None:
     from server.acp_providers import require_provider
 
     with pytest.raises(ConfigurationError) as ei:
-        require_provider("anthropic/claude-sonnet-4")  # stale OpenRouter-era id
+        require_provider("anthropic/claude-sonnet-4")  # stale pre-subscription-switch id
     msg = str(ei.value)
     assert "anthropic" in msg
     assert "claude-code" in msg  # lists the valid providers

@@ -2,11 +2,10 @@
 
 Routes Editor/Reviewer chats through locally-installed AI agents (Claude Code, Codex,
 Gemini, Qwen) over the Agent Client Protocol (JSON-RPC 2.0 over stdio), using the user's
-existing subscriptions instead of metered OpenRouter API calls.
+existing subscriptions instead of metered per-token API calls.
 
-This is a drop-in replacement for ``server.openrouter.OpenRouterClient``: it exposes the
-same ``chat(*, model, system, user, retry_delays=..., on_retry=None)`` seam (plus an extra
-``on_token`` streaming callback) so ``server.rounds`` is unchanged apart from the import.
+It exposes a ``chat(*, model, system, user, retry_delays=..., on_retry=None)`` seam (plus
+an extra ``on_token`` streaming callback) that ``server.rounds`` consumes.
 
 Design:
 - Agents are *coding* agents, so we deny every tool/permission request and advertise no
@@ -40,7 +39,7 @@ from acp.schema import AgentMessageChunk, DeniedOutcome, RequestPermissionRespon
 from server.errors import ConfigurationError, TransientError
 
 DEFAULT_RETRY_DELAYS = (1.0, 2.0, 4.0)  # 3 attempts at 1s, 2s, 4s
-PROMPT_TIMEOUT = 600.0  # seconds, matches the OpenRouter client
+PROMPT_TIMEOUT = 600.0  # seconds per prompt
 SPAWN_TIMEOUT = 120.0  # spawn + initialize; npx may download the adapter on first use
 SESSION_TIMEOUT = 60.0  # new_session / set_session_model / close_session
 
@@ -70,8 +69,8 @@ _REQUIRED_BINARIES: dict[str, tuple[str, ...]] = {
     "qwen": ("qwen",),
 }
 
-# Static catalog in OpenRouter's model-object shape so the existing model picker and
-# client/src/lib/modelDisplay.ts render it unchanged ("$0/$0" => "free"). Ids are
+# Static catalog in the model-object shape the model picker and
+# client/src/lib/modelDisplay.ts expect ("$0/$0" => "free"). Ids are
 # provider/model so the frontend's id.split("/") still yields a provider badge.
 _CATALOG: list[tuple[str, str, int]] = [
     ("claude-code/opus", "Claude Code — Opus", 200_000),
@@ -103,7 +102,7 @@ _CONFIG_ERROR_HINTS = (
 
 
 def model_catalog() -> list[dict]:
-    """Return the routable models as OpenRouter-shaped objects (zero pricing)."""
+    """Return the routable models as catalog model-objects (zero pricing)."""
     return [
         {
             "id": mid,
@@ -181,7 +180,7 @@ def require_provider(model: str) -> str:
 
     Raises ConfigurationError with an actionable message otherwise — including the
     stale-saved-default case where the model id predates the subscription switch
-    (e.g. an OpenRouter id like 'anthropic/claude-sonnet-4').
+    (e.g. a pre-switch id like 'anthropic/claude-sonnet-4').
     """
     provider, _ = split_model(model)
     if provider not in PROVIDER_LAUNCH:
@@ -434,7 +433,7 @@ async def shutdown_manager() -> None:
 
 
 class AcpProviderClient:
-    """Drop-in replacement for OpenRouterClient backed by ACP agents."""
+    """Provider client backed by locally-installed ACP agents."""
 
     def __init__(self, manager: Optional[AcpConnectionManager] = None) -> None:
         self._manager = manager or get_manager()

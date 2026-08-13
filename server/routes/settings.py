@@ -19,8 +19,8 @@ def put_settings(cfg: Config) -> Config:
 
 @router.get("/models")
 async def get_models() -> list[dict]:
-    # CLI-routable models, in OpenRouter's object shape, with $0 pricing. No network call
-    # and no API key — the user's subscription covers it.
+    # CLI-routable models in the catalog's model-object shape, with $0 pricing (the
+    # user's subscription covers usage).
     return model_catalog()
 
 

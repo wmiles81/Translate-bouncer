@@ -15,8 +15,7 @@ from server.routes import chapters as chapters_routes
 
 @pytest.fixture
 def app_with_book(translate_root: Path, fixtures_dir: Path, monkeypatch):
-    save_config(Config(openrouter_api_key="sk-or-test",
-                       default_models={"editor": "ed", "reviewer": "rv"}))
+    save_config(Config(default_models={"editor": "ed", "reviewer": "rv"}))
     client = TestClient(create_app())
     r = client.post("/books", json={
         "translated_path": str(fixtures_dir / "sample-fr-folder"),

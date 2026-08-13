@@ -9,19 +9,18 @@ def test_get_settings_returns_defaults_when_unset(translate_root: Path) -> None:
     client = TestClient(create_app())
     r = client.get("/settings")
     assert r.status_code == 200
-    assert r.json()["openrouter_api_key"] == ""
+    assert "openrouter_api_key" not in r.json()
 
 
 def test_put_settings_persists(translate_root: Path) -> None:
     client = TestClient(create_app())
     r = client.put("/settings", json={
-        "openrouter_api_key": "sk-or-test",
-        "default_models": {"editor": "anthropic/claude-sonnet-4", "reviewer": "openai/gpt-5"},
+        "default_models": {"editor": "claude-code/opus", "reviewer": "gemini/gemini-2.5-pro"},
     })
     assert r.status_code == 200
     r2 = client.get("/settings")
-    assert r2.json()["openrouter_api_key"] == "sk-or-test"
-    assert r2.json()["default_models"]["editor"] == "anthropic/claude-sonnet-4"
+    assert "openrouter_api_key" not in r2.json()
+    assert r2.json()["default_models"]["editor"] == "claude-code/opus"
 
 
 def test_get_models_returns_cli_catalog(translate_root: Path) -> None:
@@ -33,7 +32,7 @@ def test_get_models_returns_cli_catalog(translate_root: Path) -> None:
     assert len(body) > 0
     ids = {m["id"] for m in body}
     assert "gemini/gemini-2.5-pro" in ids
-    # Every model is $0 (covered by the subscription) and OpenRouter-shaped.
+    # Every model is $0 (covered by the subscription) and catalog-shaped.
     for m in body:
         assert "/" in m["id"]
         assert m["pricing"] == {"prompt": "0", "completion": "0"}

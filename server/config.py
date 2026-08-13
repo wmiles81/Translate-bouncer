@@ -28,7 +28,6 @@ class IngestionConfig(BaseModel):
 
 
 class Config(BaseModel):
-    openrouter_api_key: str = ""
     default_models: DefaultModels = Field(default_factory=DefaultModels)
     ingestion: IngestionConfig = Field(default_factory=IngestionConfig)
 
