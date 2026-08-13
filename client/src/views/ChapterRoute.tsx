@@ -74,7 +74,10 @@ export default function ChapterRoute() {
     useCallback((e) => {
       // The activity log shows everything (batch runs span chapters); the live
       // stream pane shows only THIS chapter's current attempt.
-      const mine = e.chapter === undefined || e.chapter === n;
+      // Narrow with `in` first: the "stop" variant of AppEvent has no
+      // `chapter` field, so `e.chapter` doesn't type-check without it.
+      const chapter = "chapter" in e ? e.chapter : undefined;
+      const mine = chapter === undefined || chapter === n;
       if (e.type === "status") {
         appendActivity(e.text, "status");
         // Reset on a new send AND on a retry, so a failed attempt's partial
