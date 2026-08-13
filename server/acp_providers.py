@@ -438,9 +438,6 @@ class AcpProviderClient:
     def __init__(self, manager: Optional[AcpConnectionManager] = None) -> None:
         self._manager = manager or get_manager()
 
-    async def list_models(self) -> list[dict]:
-        return model_catalog()
-
     async def chat(
         self,
         *,
@@ -456,7 +453,6 @@ class AcpProviderClient:
         # ACP prompts carry user content only; fold our editor/reviewer template in.
         payload = f"{system}\n\n---\n\n{user}"
         total = len(retry_delays)
-        last_exc: Optional[Exception] = None
         for attempt, delay in enumerate(retry_delays, start=1):
             if attempt > 1 and on_retry is not None:
                 on_retry(attempt, total)
@@ -471,9 +467,9 @@ class AcpProviderClient:
             except ConfigurationError:
                 raise  # user must act; retrying won't help
             except TransientError as exc:
-                last_exc = exc
                 if attempt < total:
                     await asyncio.sleep(delay)
                     continue
                 raise
-        raise last_exc or TransientError("retry loop exited without result")
+        # Reachable only when retry_delays is empty (no attempt was made).
+        raise TransientError("retry_delays was empty; no attempt was made")

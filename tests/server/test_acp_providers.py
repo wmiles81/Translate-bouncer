@@ -92,7 +92,7 @@ class _FakeManager:
 
 
 @pytest.fixture
-def client_with(monkeypatch):
+def client_with():
     def _make(**kw):
         mgr = _FakeManager(**kw)
         return AcpProviderClient(manager=mgr), mgr
