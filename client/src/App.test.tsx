@@ -34,7 +34,6 @@ beforeEach(() => {
     }
     if (u === "/models") return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
     if (u === "/settings") return Promise.resolve(new Response(JSON.stringify({
-      openrouter_api_key: "",
       default_models: { editor: "", reviewer: "" },
       ingestion: { heading_style: "Heading 1", fallback_patterns: [] },
     }), { status: 200 }));

@@ -92,7 +92,6 @@ export interface IngestionConfig {
   fallback_patterns: string[];
 }
 export interface Settings {
-  openrouter_api_key: string;
   default_models: DefaultModels;
   ingestion: IngestionConfig;
 }
@@ -129,8 +128,7 @@ export type AppEvent =
   | { type: "token"; text: string; chapter?: number; round?: number; stage?: Stage }
   | { type: "stop" };
 
-// OpenRouter model metadata returned by GET /models.
-// Fields are optional because OpenRouter is inconsistent across models.
+// Model metadata returned by GET /models (catalog objects; fields optional).
 export interface Model {
   id: string;
   name?: string;

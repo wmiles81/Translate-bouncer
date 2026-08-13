@@ -8,8 +8,8 @@ import { useSettings } from "../hooks/useSettings";
 
 export default function SettingsRoute() {
   const { settings, save, loading, error } = useSettings();
-  const { models, refresh: refreshModels, error: modelsError } = useModels();
-  const { providers, refresh: refreshProviders } = useProviders();
+  const { models, refresh: refreshModels, error: modelsError, loading: modelsLoading } = useModels();
+  const { providers, refresh: refreshProviders, loading: providersLoading } = useProviders();
 
   const [editorDefault, setEditorDefault] = useState<string | null>(null);
   const [reviewerDefault, setReviewerDefault] = useState<string | null>(null);
@@ -18,8 +18,6 @@ export default function SettingsRoute() {
   const [browsing, setBrowsing] = useState<"editor" | "reviewer" | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
 
   if (!settings && loading) return <div data-testid="settings-route" className="p-6">Loading…</div>;
   if (error) return <div data-testid="settings-route" className="p-6 text-red-600">{error.message}</div>;
@@ -35,7 +33,6 @@ export default function SettingsRoute() {
     setSaved(false);
     try {
       await save({
-        openrouter_api_key: settings.openrouter_api_key,
         default_models: { editor: e, reviewer: r },
         ingestion: {
           heading_style: h,
@@ -48,20 +45,12 @@ export default function SettingsRoute() {
     }
   };
 
-  // Refresh the model list and re-detect installed provider CLIs. No API key is
-  // involved anymore — models are served from a static catalog and providers are
-  // detected on the server.
-  const handleRefreshModels = async () => {
-    setRefreshError(null);
-    setRefreshing(true);
-    try {
-      refreshModels();
-      refreshProviders();
-    } catch (err) {
-      setRefreshError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setRefreshing(false);
-    }
+  // Refresh the model list and re-detect installed provider CLIs. Fetch errors land in
+  // the hooks' own error state (modelsError); the busy state is the hooks' loading flags.
+  const refreshing = modelsLoading || providersLoading;
+  const handleRefreshModels = () => {
+    refreshModels();
+    refreshProviders();
   };
 
   return (
@@ -106,11 +95,8 @@ export default function SettingsRoute() {
           >
             {refreshing ? "Refreshing…" : "Refresh model list"}
           </button>
-          {modelsError && !refreshError && (
-            <span className="text-sm text-red-600">{modelsError.message}</span>
-          )}
-          {refreshError && <span className="text-sm text-red-600">{refreshError}</span>}
-          {!refreshError && !modelsError && models.length > 0 && (
+          {modelsError && <span className="text-sm text-red-600">{modelsError.message}</span>}
+          {!modelsError && models.length > 0 && (
             <span className="text-sm text-gray-500">{models.length} models</span>
           )}
         </div>
@@ -125,7 +111,7 @@ export default function SettingsRoute() {
               type="text"
               value={e}
               onChange={(ev) => setEditorDefault(ev.target.value)}
-              placeholder="anthropic/claude-sonnet-4"
+              placeholder="claude-code/opus"
               className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-sm"
             />
             <button
@@ -144,7 +130,7 @@ export default function SettingsRoute() {
               type="text"
               value={r}
               onChange={(ev) => setReviewerDefault(ev.target.value)}
-              placeholder="openai/gpt-5"
+              placeholder="gemini/gemini-2.5-pro"
               className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-sm"
             />
             <button

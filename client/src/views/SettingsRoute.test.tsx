@@ -9,7 +9,6 @@ describe("SettingsRoute", () => {
       const u = String(url);
       if (u === "/settings") {
         return Promise.resolve(new Response(JSON.stringify({
-          openrouter_api_key: "",
           default_models: { editor: "claude-code/opus", reviewer: "gemini/gemini-2.5-pro" },
           ingestion: { heading_style: "Heading 1", fallback_patterns: ["^Chapter\\s+\\d+"] },
         }), { status: 200 }));
