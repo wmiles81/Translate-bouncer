@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import ModelBrowser from "../components/ModelBrowser";
+import ModelPicker from "../components/ModelPicker";
 import PromptEditor from "../components/PromptEditor";
 import { useModels } from "../hooks/useModels";
 import { useProviders } from "../hooks/useProviders";
@@ -16,7 +16,6 @@ export default function SettingsRoute() {
   const [reviewerDefault, setReviewerDefault] = useState<string | null>(null);
   const [headingStyle, setHeadingStyle] = useState<string | null>(null);
   const [patternsText, setPatternsText] = useState<string | null>(null);
-  const [browsing, setBrowsing] = useState<"editor" | "reviewer" | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -128,44 +127,8 @@ export default function SettingsRoute() {
 
       <section className="mb-6 space-y-3">
         <h2 className="text-sm font-semibold uppercase text-gray-500">Default models</h2>
-        <label className="block">
-          <span className="text-sm font-medium">Editor</span>
-          <div className="mt-1 flex gap-2">
-            <input
-              type="text"
-              value={e}
-              onChange={(ev) => setEditorDefault(ev.target.value)}
-              placeholder="claude-code/default"
-              className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-sm"
-            />
-            <button
-              type="button"
-              onClick={() => setBrowsing("editor")}
-              className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
-            >
-              Browse…
-            </button>
-          </div>
-        </label>
-        <label className="block">
-          <span className="text-sm font-medium">Reviewer</span>
-          <div className="mt-1 flex gap-2">
-            <input
-              type="text"
-              value={r}
-              onChange={(ev) => setReviewerDefault(ev.target.value)}
-              placeholder="provider/model (CLI or OpenRouter)"
-              className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-sm"
-            />
-            <button
-              type="button"
-              onClick={() => setBrowsing("reviewer")}
-              className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
-            >
-              Browse…
-            </button>
-          </div>
-        </label>
+        <ModelPicker label="Editor" value={e} models={models} onChange={setEditorDefault} />
+        <ModelPicker label="Reviewer" value={r} models={models} onChange={setReviewerDefault} />
       </section>
 
       <section className="mb-6 space-y-3">
@@ -208,17 +171,6 @@ export default function SettingsRoute() {
         <PromptEditor kind="reviewer" />
       </section>
 
-      {browsing && (
-        <ModelBrowser
-          initialValue={browsing === "editor" ? e : r}
-          onCancel={() => setBrowsing(null)}
-          onSelect={(id) => {
-            if (browsing === "editor") setEditorDefault(id);
-            else setReviewerDefault(id);
-            setBrowsing(null);
-          }}
-        />
-      )}
     </div>
   );
 }

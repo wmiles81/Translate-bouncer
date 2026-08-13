@@ -42,8 +42,11 @@ describe("SettingsRoute", () => {
       </MemoryRouter>
     );
     await waitFor(() => expect(screen.getByLabelText(/heading style/i)).toHaveValue("Heading 1"));
-    expect(screen.getByDisplayValue("claude-code/default")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("z-ai/glm-4.7")).toBeInTheDocument();
+    // Default models render as dropdown triggers showing the model's display name.
+    expect(screen.getByRole("button", { name: "Editor" })).toHaveTextContent(
+      "Claude Code (Claude Max) — CLI default model"
+    );
+    expect(screen.getByRole("button", { name: "Reviewer" })).toHaveTextContent("GLM 4.7");
     expect(screen.getByText("Claude Code")).toBeInTheDocument();
     expect(screen.getByText("Gemini")).toBeInTheDocument();
   });
