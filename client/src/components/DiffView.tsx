@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { diffParagraphs } from "../lib/diff";
 import type { ParsedDoc } from "../types/api";
 import ParagraphRender from "./ParagraphRender";
@@ -14,7 +15,9 @@ const COLOR: Record<"equal" | "insert" | "delete", string> = {
 };
 
 export default function DiffView({ prev, next }: Props) {
-  const blocks = diffParagraphs(prev, next);
+  // LCS over every paragraph — recompute only when the docs change, not on
+  // every parent re-render (token events re-render ChapterRoute constantly).
+  const blocks = useMemo(() => diffParagraphs(prev, next), [prev, next]);
   return (
     <div>
       {blocks.map((b, i) => (
