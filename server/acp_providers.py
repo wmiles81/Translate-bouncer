@@ -58,13 +58,14 @@ _PROVIDER_NAMES = {
     "qwen": "Qwen Code",
 }
 
-# Base CLI used only to detect whether a provider is plausibly available. The Claude/Codex
-# adapters wrap (and require) the base CLI, so its presence is a good-enough proxy.
-_DETECT_CMD = {
-    "claude-code": "claude",
-    "codex": "codex",
-    "gemini": "gemini",
-    "qwen": "qwen",
+# Binaries a provider's LAUNCH actually needs, resolved against the same augmented
+# PATH _spawn uses. Claude/Codex launch via `npx <adapter>` and the adapter drives
+# the base CLI, so both must be present.
+_REQUIRED_BINARIES: dict[str, tuple[str, ...]] = {
+    "claude-code": ("claude", "npx"),
+    "codex": ("codex", "npx"),
+    "gemini": ("gemini",),
+    "qwen": ("qwen",),
 }
 
 # Static catalog in OpenRouter's model-object shape so the existing model picker and
@@ -114,12 +115,15 @@ def model_catalog() -> list[dict]:
 
 
 def detect_providers() -> list[dict]:
-    """Best-effort detection of which provider CLIs are installed on PATH."""
+    """Detect which provider CLIs are launchable, probing the PATH _spawn will use."""
+    path = _subprocess_env().get("PATH")
     return [
         {
             "id": pid,
             "name": _PROVIDER_NAMES[pid],
-            "detected": shutil.which(_DETECT_CMD[pid]) is not None,
+            "detected": all(
+                shutil.which(b, path=path) is not None for b in _REQUIRED_BINARIES[pid]
+            ),
         }
         for pid in PROVIDER_LAUNCH
     ]
@@ -227,13 +231,14 @@ class AcpConnectionManager:
 
     async def _spawn(self, provider: str) -> _Conn:
         cmd, args = PROVIDER_LAUNCH[provider]
-        executable = shutil.which(cmd) or cmd
+        env = _subprocess_env()
+        executable = shutil.which(cmd, path=env.get("PATH")) or cmd
         # Base Client methods have empty bodies (fs/terminal ops we never advertise), so
         # the type checker treats them as abstract; instantiation is verified safe.
         client = _StreamingClient()  # type: ignore[abstract]
         try:
             connection, proc = await self._stack.enter_async_context(
-                spawn_agent_process(client, executable, *args, env=_subprocess_env())
+                spawn_agent_process(client, executable, *args, env=env)
             )
             await connection.initialize(protocol_version=PROTOCOL_VERSION)
         except Exception as exc:  # noqa: BLE001 - normalize to our error taxonomy

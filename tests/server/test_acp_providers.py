@@ -141,3 +141,26 @@ def test_streaming_client_denies_permissions() -> None:
         c.request_permission(options=[], session_id="s", tool_call=None)
     )
     assert isinstance(resp.outcome, DeniedOutcome)
+
+
+def test_detection_probes_the_spawn_path_and_all_required_binaries(monkeypatch, tmp_path) -> None:
+    """Detection must use the augmented PATH _spawn uses, and require every binary
+    a launch needs (claude-code needs BOTH `claude` and `npx`)."""
+    import server.acp_providers as ap
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    for name in ("claude", "gemini"):  # note: no npx, no codex, no qwen
+        f = fake_bin / name
+        f.write_text("#!/bin/sh\n")
+        f.chmod(0o755)
+
+    # Empty ambient PATH; the augmented env is the only way to find the CLIs.
+    monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))
+    monkeypatch.setattr(ap, "_subprocess_env", lambda: {"PATH": str(fake_bin)})
+
+    detected = {p["id"]: p["detected"] for p in ap.detect_providers()}
+    assert detected["gemini"] is True          # gemini needs only `gemini`
+    assert detected["claude-code"] is False    # has `claude` but not `npx`
+    assert detected["codex"] is False
+    assert detected["qwen"] is False
