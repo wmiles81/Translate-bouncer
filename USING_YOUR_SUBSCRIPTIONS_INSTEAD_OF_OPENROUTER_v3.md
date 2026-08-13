@@ -85,7 +85,7 @@ Save, add a book, and run rounds. The activity log shows the model's text stream
 ## Things to know up front
 
 - **Model prices show as "free."** That's correct — your subscription covers it.
-- **You can watch it think.** A live preview pane under the activity log shows the model's output streaming token-by-token during each round.
+- **You can watch it think — in small batches, not token-by-token.** A live preview pane under the activity log shows the model's output during each round, arriving in visible ~300-character jumps rather than a smooth per-token trickle — that's deliberate coalescing to keep the UI responsive, not lag. The pane only ever shows the chapter you're currently viewing; if you switch to another chapter or a batch run is working on one you're not looking at, that chapter's output isn't shown there (the activity log below it still logs every chapter). Seeing the pane sit empty while a batch runs on a different chapter is normal, not a stall.
 - **Codex (ChatGPT Plus) has a daily cap.** Big overnight batches can hit it; Codex calls then fail until the cap resets (a few hours). Claude Max and Gemini AI Pro are more generous, so this only bites if Codex is your only subscription.
 - **Mix and match.** Editor = Claude Opus, Reviewer = Gemini 2.5 Pro is a strong pairing. Whatever you set in Settings is the default; override per-chapter from the chapter page.
 - **No tools, no file access.** Translate tells each agent it may only return text — it cannot read or write files on your machine during a round.
@@ -121,7 +121,7 @@ async def chat(*, model, system, user,
                retry_delays=DEFAULT_RETRY_DELAYS, on_retry=None, on_token=None) -> str
 ```
 
-`server/rounds.py` is unchanged except the import and the new `on_token` pass-through; the two route handlers in `server/routes/chapters.py` supply an `on_token` lambda that publishes a `{"type": "token", ...}` SSE event so the frontend can stream it.
+`server/rounds.py` is unchanged except the import and the new `on_token` pass-through; the two route handlers in `server/routes/chapters.py` supply an `on_token` callback that isn't a raw publish-per-chunk lambda but a **`_TokenCoalescer`** — it buffers streamed chunks and publishes one `{"type": "token", ...}` SSE event per ~300 characters (`threshold=300`), flushing the remainder when the pass returns (success or failure) so the tail is never lost. Without it, a multi-thousand-token round would otherwise publish thousands of SSE events and force a client re-render per token; the frontend only ever sees the batched output, not the raw per-chunk stream. On the client, `ChapterRoute.tsx`'s `useEvents` handler further scopes `token` events to the chapter currently being viewed (`chapter === n`) — a token event for any other chapter is dropped, so the preview pane never mixes output from two chapters and stays empty while a batch works on a chapter you aren't viewing.
 
 ## The ACP client (`server/acp_providers.py`)
 

@@ -394,6 +394,12 @@ A scrolling log shows every action with timestamps:
 
 - Grey lines are in-progress events; green lines are completions; red
   lines are errors.
+- A **live preview pane** shows the current chapter's in-progress model
+  output while a round is running. It arrives in small batched updates
+  (roughly every 300 characters) rather than one smooth stream, and it only
+  ever shows the chapter you're currently viewing — during a batch run, the
+  pane goes quiet while other chapters are being worked on (the activity
+  log below it still records every chapter). That's expected, not a stall.
 - Below the log: a single status line shows the most recent event plus
   elapsed seconds when a model is running, plus two buttons:
   - **Continue** — run one round of *Editor → Reviewer → Editor (apply)*.
