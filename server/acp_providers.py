@@ -426,6 +426,7 @@ class AcpProviderClient:
         retry_delays: Sequence[float] = DEFAULT_RETRY_DELAYS,
         on_retry=None,  # callable(attempt:int, total:int)
         on_token: Optional[Callable[[str], None]] = None,
+        on_notice: Optional[Callable[[str], None]] = None,
     ) -> str:
         provider, model_arg = split_model(model)
         # ACP prompts carry user content only; fold our editor/reviewer template in.
@@ -441,6 +442,7 @@ class AcpProviderClient:
                     model_arg=model_arg,
                     payload=payload,
                     on_token=on_token,
+                    on_notice=on_notice,
                 )
             except ConfigurationError:
                 raise  # user must act; retrying won't help

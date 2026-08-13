@@ -48,12 +48,15 @@ class _FakeManager:
         self.last_payload = None
         self.last_provider = None
         self.last_model_arg = None
+        self.notice = None
 
-    async def run_turn(self, *, provider, model_arg, payload, on_token):
+    async def run_turn(self, *, provider, model_arg, payload, on_token, on_notice=None):
         self.calls += 1
         self.last_provider = provider
         self.last_model_arg = model_arg
         self.last_payload = payload
+        if on_notice is not None and getattr(self, "notice", None):
+            on_notice(self.notice)
         if self.exc is not None and self.calls <= self.fail_times:
             raise self.exc
         out = []
@@ -116,6 +119,16 @@ async def test_chat_does_not_retry_configuration_error(client_with) -> None:
     with pytest.raises(ConfigurationError):
         await client.chat(model="claude-code/opus", system="s", user="u", retry_delays=[0, 0, 0])
     assert mgr.calls == 1  # blocked immediately, no retry
+
+
+async def test_chat_forwards_model_substitution_notices(client_with) -> None:
+    client, mgr = client_with(chunks=["x"])
+    mgr.notice = "model 'opus' is not exposed by claude-code; using the agent's default model"
+    notices: list[str] = []
+    await client.chat(
+        model="claude-code/opus", system="s", user="u", on_notice=notices.append
+    )
+    assert notices == [mgr.notice]
 
 
 def test_classify_policy() -> None:

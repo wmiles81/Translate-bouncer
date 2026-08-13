@@ -85,6 +85,7 @@ async def run_editor_pass(
     model: str,
     on_retry=None,
     on_token=None,
+    on_notice=None,
 ) -> ParsedDoc:
     """Run the Editor pass and persist round-N-editor.{docx,json}."""
     payload = render_payload(en_doc, target_doc, source_code=source_code, target_code=target_code)
@@ -98,7 +99,7 @@ async def run_editor_pass(
         )
     system = render_editor_prompt(template=editor_prompt_template, target_code=target_code)
     raw = await client.chat(
-        model=model, system=system, user=user_msg, on_retry=on_retry, on_token=on_token
+        model=model, system=system, user=user_msg, on_retry=on_retry, on_token=on_token, on_notice=on_notice
     )
 
     cdir = _chapter_dir(slug, chapter_n)
@@ -217,11 +218,12 @@ async def run_reviewer_pass(
     model: str,
     on_retry=None,
     on_token=None,
+    on_notice=None,
 ) -> ReviewerResult:
     payload = render_payload(en_doc, target_doc, source_code=source_code, target_code=target_code)
     system = render_reviewer_prompt(template=reviewer_prompt_template, target_code=target_code)
     raw = await client.chat(
-        model=model, system=system, user=payload, on_retry=on_retry, on_token=on_token
+        model=model, system=system, user=payload, on_retry=on_retry, on_token=on_token, on_notice=on_notice
     )
 
     suggestions = _try_parse_suggestions(raw)
