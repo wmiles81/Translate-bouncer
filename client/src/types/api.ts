@@ -110,7 +110,7 @@ export interface PromptFile {
 
 // SSE event shape (server side publishes objects with `type` plus extras)
 export type Stage = "editor" | "reviewer";
-export type Phase = "sent" | "returned" | "retry";
+export type Phase = "sent" | "returned" | "retry" | "notice";
 export type AppEvent =
   | {
       type: "status";

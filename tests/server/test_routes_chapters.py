@@ -125,6 +125,39 @@ def test_round_rejects_unknown_provider_before_any_event(app_with_book) -> None:
     assert "anthropic" in r.json()["detail"]
 
 
+def test_on_retry_resets_coalescer_buffer(monkeypatch) -> None:
+    """A failed attempt's sub-threshold buffered tail must not survive into the retry.
+
+    Regression test for the coalescer being shared across chat()'s internal retries:
+    on_retry must clear the buffer *before* publishing the retry status event, so a
+    later flush() never emits the stale prefix from the previous attempt.
+    """
+    published: list[dict] = []
+    monkeypatch.setattr(chapters_routes.EVENT_BUS, "publish", published.append)
+
+    on_retry, on_token, on_notice = chapters_routes._round_callbacks(1, 1, "editor")
+
+    # Sub-threshold chunk from the failed attempt — buffered, not yet published.
+    on_token("stale partial output")
+    assert not any(e.get("type") == "token" for e in published)
+
+    on_retry(1, 3)
+    retry_events = [e for e in published if e.get("type") == "status" and e.get("phase") == "retry"]
+    assert len(retry_events) == 1
+
+    # The stale buffered text must be gone — a later flush publishes nothing.
+    on_token.flush()
+    token_events = [e for e in published if e.get("type") == "token"]
+    assert token_events == []
+
+    # New chunks after the retry behave normally (flush the buffer once non-empty).
+    on_token("fresh output")
+    on_token.flush()
+    token_events = [e for e in published if e.get("type") == "token"]
+    assert len(token_events) == 1
+    assert token_events[0]["text"] == "fresh output"
+
+
 def test_get_chapter_docs_after_editor_round(app_with_book, monkeypatch) -> None:
     client, slug = app_with_book
     fake_client = AsyncMock()

@@ -69,20 +69,28 @@ class _TokenCoalescer:
             self._buf.clear()
             self._size = 0
 
+    def reset(self) -> None:
+        """Drop any buffered chunks without publishing (a failed attempt's tail)."""
+        self._buf.clear()
+        self._size = 0
+
 
 def _round_callbacks(chapter: int, round_n: int, stage: str):
     """on_retry / on_token / on_notice publishers shared by the editor and reviewer routes."""
 
+    coalescer = _TokenCoalescer(lambda text: EVENT_BUS.publish({
+        "type": "token", "chapter": chapter, "round": round_n, "stage": stage, "text": text,
+    }))
+
     def on_retry(attempt: int, total: int) -> None:
+        # A failed attempt's buffered tail must never prefix the next attempt's
+        # first token event — the client resets its pane on this status event.
+        coalescer.reset()
         EVENT_BUS.publish({
             "type": "status", "chapter": chapter, "round": round_n, "stage": stage,
             "phase": "retry",
             "text": f"Ch {chapter} R{round_n} {stage.capitalize()} — retry {attempt}/{total}...",
         })
-
-    coalescer = _TokenCoalescer(lambda text: EVENT_BUS.publish({
-        "type": "token", "chapter": chapter, "round": round_n, "stage": stage, "text": text,
-    }))
 
     def on_notice(text: str) -> None:
         EVENT_BUS.publish({
@@ -183,12 +191,15 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
             on_notice=on_notice,
         )
     except RecoverableError as exc:
+        on_token.reset()
         EVENT_BUS.publish({"type": "error", "chapter": n, "round": next_round, "stage": "editor", "text": str(exc)})
         raise HTTPException(status_code=422, detail={"message": str(exc), "kind": "recoverable"})
     except TransientError as exc:
+        on_token.reset()
         EVENT_BUS.publish({"type": "error", "chapter": n, "round": next_round, "stage": "editor", "text": str(exc)})
         raise HTTPException(status_code=502, detail={"message": str(exc), "kind": "transient"})
     except ConfigurationError as exc:
+        on_token.reset()
         raise HTTPException(status_code=400, detail=str(exc))
     finally:
         on_token.flush()
@@ -257,9 +268,11 @@ async def post_round_reviewer(slug: str, n: int, req: RoundRequest) -> dict:
             on_notice=on_notice,
         )
     except TransientError as exc:
+        on_token.reset()
         EVENT_BUS.publish({"type": "error", "chapter": n, "round": review_round, "stage": "reviewer", "text": str(exc)})
         raise HTTPException(status_code=502, detail={"message": str(exc), "kind": "transient"})
     except ConfigurationError as exc:
+        on_token.reset()
         raise HTTPException(status_code=400, detail=str(exc))
     finally:
         on_token.flush()
