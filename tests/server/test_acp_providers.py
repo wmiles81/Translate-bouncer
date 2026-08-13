@@ -112,13 +112,20 @@ async def test_chat_does_not_retry_configuration_error(client_with) -> None:
     assert mgr.calls == 1  # blocked immediately, no retry
 
 
-def test_classify_maps_auth_and_usage_to_configuration() -> None:
+def test_classify_policy() -> None:
     from server.acp_providers import _classify
 
+    # User-must-act -> ConfigurationError.
     assert isinstance(_classify(Exception("Please sign in to continue")), ConfigurationError)
     assert isinstance(_classify(Exception("usage limit reached")), ConfigurationError)
-    assert isinstance(_classify(Exception("ENOENT: command not found")), ConfigurationError)
-    # Anything else is retryable.
+    exc = _classify(FileNotFoundError(2, "No such file or directory", "npx"))
+    assert isinstance(exc, ConfigurationError)
+    assert "npx" in str(exc)
+    # Retryable -> TransientError (rate limits clear on their own; "not found"
+    # phrasing appears in transient agent errors like "session not found").
+    assert isinstance(_classify(Exception("rate limit exceeded")), TransientError)
+    assert isinstance(_classify(Exception("quota exceeded, retry later")), TransientError)
+    assert isinstance(_classify(Exception("session not found")), TransientError)
     assert isinstance(_classify(Exception("connection reset by peer")), TransientError)
 
 

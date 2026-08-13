@@ -82,6 +82,9 @@ _CATALOG: list[tuple[str, str, int]] = [
 ]
 
 # Substrings that mean "the user must act; retrying won't help" -> ConfigurationError.
+# Rate limits and quotas are NOT here: they clear on their own, so they stay retryable
+# (TransientError), matching server/errors.py. Missing executables are detected by
+# exception type in _classify, not by substring.
 _CONFIG_ERROR_HINTS = (
     "auth",
     "login",
@@ -91,12 +94,8 @@ _CONFIG_ERROR_HINTS = (
     "credential",
     "unauthorized",
     "usage limit",
-    "rate limit",
-    "quota",
     "upgrade to",
     "out of credits",
-    "not found",  # adapter package / executable missing
-    "enoent",
 )
 
 
@@ -150,6 +149,11 @@ def _subprocess_env() -> dict[str, str]:
 
 def _classify(exc: Exception) -> Exception:
     """Map a raw ACP/transport error to a TransientError or ConfigurationError."""
+    if isinstance(exc, FileNotFoundError):
+        missing = exc.filename or str(exc)
+        return ConfigurationError(
+            f"executable not found: {missing} — install the provider CLI (see the setup guide)"
+        )
     msg = str(exc)
     low = msg.lower()
     if isinstance(exc, RequestError) and getattr(exc, "code", None) == -32000:
