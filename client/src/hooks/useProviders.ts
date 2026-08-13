@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
 import { getProviders } from "../api/settings";
 import type { Provider } from "../types/api";
+import { useFetch } from "./useFetch";
 
 export function useProviders(): {
   providers: Provider[];
@@ -8,22 +8,6 @@ export function useProviders(): {
   loading: boolean;
   error: Error | null;
 } {
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  const refresh = () => {
-    setLoading(true);
-    setError(null);
-    getProviders()
-      .then(setProviders)
-      .catch((e) => setError(e instanceof Error ? e : new Error(String(e))))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    refresh();
-  }, []);
-
+  const { data: providers, refresh, loading, error } = useFetch<Provider[]>(getProviders, []);
   return { providers, refresh, loading, error };
 }
