@@ -72,23 +72,29 @@ export default function ChapterRoute() {
 
   useEvents(
     useCallback((e) => {
+      // The activity log shows everything (batch runs span chapters); the live
+      // stream pane shows only THIS chapter's current attempt.
+      const mine = e.chapter === undefined || e.chapter === n;
       if (e.type === "status") {
         appendActivity(e.text, "status");
-        if (e.phase === "sent") setStream(""); // new round: reset live output
+        // Reset on a new send AND on a retry, so a failed attempt's partial
+        // output never concatenates with its retry's.
+        if (mine && (e.phase === "sent" || e.phase === "retry")) setStream("");
       } else if (e.type === "token") {
-        // Live model output. Keep only a rolling tail so the buffer can't grow unbounded.
+        if (!mine) return;
+        // Keep only a rolling tail so the buffer can't grow unbounded.
         setStream((prev) => (prev + e.text).slice(-4000));
       } else if (e.type === "round_complete") {
         appendActivity(
           `✓ Ch ${e.chapter ?? "?"} R${e.round} ${e.stage} complete`,
           "complete",
         );
-        setStream("");
+        if (mine) setStream("");
       } else if (e.type === "error") {
         appendActivity(`⚠ ${e.text}`, "error");
-        setStream("");
+        if (mine) setStream("");
       }
-    }, [appendActivity])
+    }, [appendActivity, n])
   );
 
   // Pull the most useful human-readable message out of an unknown error.
