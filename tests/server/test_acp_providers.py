@@ -11,7 +11,6 @@ from server.acp_providers import (
     AcpConnectionManager,
     AcpProviderClient,
     detect_providers,
-    model_catalog,
     split_model,
 )
 from server.errors import ConfigurationError, TransientError
@@ -23,9 +22,18 @@ def test_split_model_variants() -> None:
     assert split_model("qwen") == ("qwen", "")
 
 
-def test_model_catalog_shape() -> None:
-    cat = model_catalog()
-    assert cat, "catalog must not be empty"
+def test_model_catalog_lists_one_default_entry_per_detected_provider(monkeypatch) -> None:
+    """No named per-provider models: the adapters expose session.models = None, so a
+    named model could never be selected. One honest <provider>/default per detected CLI."""
+    import server.acp_providers as ap
+
+    monkeypatch.setattr(
+        ap, "detect_providers",
+        lambda: [{"id": pid, "name": ap._PROVIDER_NAMES[pid], "detected": pid in ("gemini", "codex")}
+                 for pid in ap.PROVIDER_LAUNCH],
+    )
+    cat = ap.model_catalog()
+    assert [m["id"] for m in cat] == ["codex/default", "gemini/default"]
     for m in cat:
         assert "/" in m["id"]  # provider/model so the frontend can split it
         assert m["pricing"] == {"prompt": "0", "completion": "0"}

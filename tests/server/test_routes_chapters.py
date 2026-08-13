@@ -115,14 +115,42 @@ def test_get_chapter_docs_returns_english_and_translated(app_with_book) -> None:
     assert len(body["english"]["paragraphs"]) > 0
 
 
-def test_round_rejects_unknown_provider_before_any_event(app_with_book) -> None:
+def test_round_rejects_openrouter_model_without_key_before_any_event(app_with_book) -> None:
+    """Non-CLI model ids route to OpenRouter; without a key that's a clean 400 upfront."""
     client, slug = app_with_book
     r = client.post(
         f"/books/{slug}/chapter/1/round/editor",
         json={"model": "anthropic/claude-sonnet-4"},
     )
     assert r.status_code == 400
-    assert "anthropic" in r.json()["detail"]
+    assert "OpenRouter" in r.json()["detail"]
+    assert "anthropic/claude-sonnet-4" in r.json()["detail"]
+
+
+def test_make_client_routes_by_model_namespace(translate_root, monkeypatch) -> None:
+    from server.acp_providers import AcpProviderClient
+    from server.config import Config, save_config
+    from server.openrouter import OpenRouterClient
+    from server.routes.chapters import _make_client
+
+    # CLI namespace -> ACP client (detection satisfied via monkeypatch).
+    import server.acp_providers as ap
+    monkeypatch.setattr(
+        ap, "detect_providers",
+        lambda: [{"id": pid, "name": ap._PROVIDER_NAMES[pid], "detected": True}
+                 for pid in ap.PROVIDER_LAUNCH],
+    )
+    assert isinstance(_make_client("gemini/default"), AcpProviderClient)
+
+    # Anything else -> OpenRouter, carrying the configured key.
+    save_config(Config(openrouter_api_key="sk-or-test"))
+    or_client = _make_client("z-ai/glm-4.7")
+    assert isinstance(or_client, OpenRouterClient)
+    assert or_client.api_key == "sk-or-test"
+
+    # OpenRouter's org namespace collides with bare CLI names (it serves qwen/... model
+    # ids); only the exact "<cli>/default" form routes to a CLI.
+    assert isinstance(_make_client("qwen/qwen3-max"), OpenRouterClient)
 
 
 def test_on_retry_resets_coalescer_buffer(monkeypatch) -> None:

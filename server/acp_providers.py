@@ -74,19 +74,11 @@ _REQUIRED_BINARIES: dict[str, tuple[str, ...]] = {
     "qwen": ("qwen",),
 }
 
-# Static catalog in the model-object shape the model picker and
-# client/src/lib/modelDisplay.ts expect ("$0/$0" => "free"). Ids are
-# provider/model so the frontend's id.split("/") still yields a provider badge.
-_CATALOG: list[tuple[str, str, int]] = [
-    ("claude-code/opus", "Claude Code — Opus", 200_000),
-    ("claude-code/sonnet", "Claude Code — Sonnet", 200_000),
-    ("claude-code/haiku", "Claude Code — Haiku", 200_000),
-    ("gemini/gemini-2.5-pro", "Gemini 2.5 Pro", 1_000_000),
-    ("gemini/gemini-2.5-flash", "Gemini 2.5 Flash", 1_000_000),
-    ("gemini/gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite", 1_000_000),
-    ("codex/default", "Codex (ChatGPT)", 256_000),
-    ("qwen/default", "Qwen Code", 256_000),
-]
+# NOTE: no named per-provider models. The claude-code and codex adapters expose
+# session.models = None over ACP (verified live), so a named model here could never
+# actually be selected — the CLI always runs its own configured default. One honest
+# "<provider>/default" entry per DETECTED provider; real model choice comes from
+# OpenRouter (server/openrouter.py) when an API key is configured.
 
 # Substrings that mean "the user must act; retrying won't help" -> ConfigurationError.
 # Rate limits and quotas are NOT here: they clear on their own, so they stay retryable
@@ -107,16 +99,18 @@ _CONFIG_ERROR_HINTS = (
 
 
 def model_catalog() -> list[dict]:
-    """Return the routable models as catalog model-objects (zero pricing)."""
+    """One "<provider>/default" entry per detected CLI, in the model-object shape the
+    picker and client/src/lib/modelDisplay.ts expect ("$0/$0" => "free")."""
     return [
         {
-            "id": mid,
-            "name": name,
-            "context_length": ctx,
+            "id": f"{p['id']}/default",
+            "name": f"{p['name']} — CLI default model",
+            "context_length": None,
             "pricing": {"prompt": "0", "completion": "0"},
             "supported_parameters": [],
         }
-        for mid, name, ctx in _CATALOG
+        for p in detect_providers()
+        if p["detected"]
     ]
 
 

@@ -7,7 +7,13 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from server.acp_providers import AcpProviderClient, require_provider
+from server.acp_providers import (
+    PROVIDER_LAUNCH,
+    AcpProviderClient,
+    require_provider,
+    split_model,
+)
+from server.config import load_config
 from server.docx_io import ParsedDoc
 from server.errors import ConfigurationError, RecoverableError, TransientError
 from server.finalize import FinalizeError, finalize_chapter
@@ -38,9 +44,28 @@ class RoundRequest(BaseModel):
     model: str
 
 
-def _make_client(model: str) -> AcpProviderClient:
-    require_provider(model)
-    return AcpProviderClient()
+def _make_client(model: str):
+    """Route by model id: exactly "<cli>/default" -> that provider CLI over ACP;
+    anything else -> OpenRouter.
+
+    The catalog only ever advertises "<cli>/default" for CLI providers (the adapters
+    can't switch models), and OpenRouter's org namespace collides with bare CLI names
+    (e.g. OpenRouter serves qwen/qwen3-max) — so the CLI match must be exact.
+    """
+    provider, model_arg = split_model(model)
+    if provider in PROVIDER_LAUNCH and model_arg in ("", "default"):
+        require_provider(model)
+        return AcpProviderClient()
+    cfg = load_config()
+    if not cfg.openrouter_api_key:
+        raise ConfigurationError(
+            f"Model '{model}' routes through OpenRouter, but no OpenRouter API key is "
+            "configured. Add your key in Settings, or pick a provider-CLI model "
+            "(claude-code, codex, gemini, qwen)."
+        )
+    from server.openrouter import OpenRouterClient
+
+    return OpenRouterClient(api_key=cfg.openrouter_api_key)
 
 
 class _TokenCoalescer:

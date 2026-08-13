@@ -5,7 +5,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from server.acp_providers import AcpProviderClient
+# ``client`` is any object with the shared chat() seam: AcpProviderClient or
+# server.openrouter.OpenRouterClient — routes pick one per model id.
 from server.docx_io import ParsedDoc, write_docx
 from server.errors import RecoverableError
 from server.paths import book_dir
@@ -72,7 +73,7 @@ def _chapter_dir(slug: str, n: int) -> Path:
 
 async def run_editor_pass(
     *,
-    client: AcpProviderClient,
+    client,
     slug: str,
     chapter_n: int,
     round_n: int,
@@ -206,7 +207,7 @@ def _try_parse_suggestions(raw: str) -> List[Suggestion]:
 
 async def run_reviewer_pass(
     *,
-    client: AcpProviderClient,
+    client,
     slug: str,
     chapter_n: int,
     round_n: int,

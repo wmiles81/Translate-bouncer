@@ -11,6 +11,7 @@ export default function SettingsRoute() {
   const { models, refresh: refreshModels, error: modelsError, loading: modelsLoading } = useModels();
   const { providers, refresh: refreshProviders, loading: providersLoading } = useProviders();
 
+  const [apiKey, setApiKey] = useState<string | null>(null);
   const [editorDefault, setEditorDefault] = useState<string | null>(null);
   const [reviewerDefault, setReviewerDefault] = useState<string | null>(null);
   const [headingStyle, setHeadingStyle] = useState<string | null>(null);
@@ -23,6 +24,7 @@ export default function SettingsRoute() {
   if (error) return <div data-testid="settings-route" className="p-6 text-red-600">{error.message}</div>;
   if (!settings) return <div data-testid="settings-route" className="p-6">No settings.</div>;
 
+  const k = apiKey ?? settings.openrouter_api_key ?? "";
   const e = editorDefault ?? settings.default_models.editor;
   const r = reviewerDefault ?? settings.default_models.reviewer;
   const h = headingStyle ?? settings.ingestion.heading_style;
@@ -33,6 +35,7 @@ export default function SettingsRoute() {
     setSaved(false);
     try {
       await save({
+        openrouter_api_key: k,
         default_models: { editor: e, reviewer: r },
         ingestion: {
           heading_style: h,
@@ -65,8 +68,9 @@ export default function SettingsRoute() {
           AI providers (your subscriptions)
         </h2>
         <p className="text-sm text-gray-600">
-          Translate routes each round through an AI CLI you've signed into. Install and
-          sign in to at least one; detected providers are shown below.
+          Translate routes provider-CLI models (claude-code, codex, gemini, qwen) through
+          an AI CLI you've signed into; every other model id routes through OpenRouter
+          using the API key below. Use either or both.
         </p>
         <ul className="space-y-1" data-testid="provider-list">
           {providers.map((pr) => (
@@ -103,6 +107,26 @@ export default function SettingsRoute() {
       </section>
 
       <section className="mb-6 space-y-3">
+        <h2 className="text-sm font-semibold uppercase text-gray-500">OpenRouter</h2>
+        <label className="block">
+          <span className="text-sm font-medium">API key</span>
+          <input
+            type="password"
+            value={k}
+            onChange={(ev) => setApiKey(ev.target.value)}
+            placeholder="sk-or-..."
+            autoComplete="off"
+            className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-sm"
+          />
+        </label>
+        <p className="text-sm text-gray-600">
+          Optional. With a key set, the model list includes every OpenRouter model and any
+          non-CLI model id (e.g. from your saved defaults) routes through OpenRouter.
+          Save after changing, then refresh the model list.
+        </p>
+      </section>
+
+      <section className="mb-6 space-y-3">
         <h2 className="text-sm font-semibold uppercase text-gray-500">Default models</h2>
         <label className="block">
           <span className="text-sm font-medium">Editor</span>
@@ -111,7 +135,7 @@ export default function SettingsRoute() {
               type="text"
               value={e}
               onChange={(ev) => setEditorDefault(ev.target.value)}
-              placeholder="claude-code/opus"
+              placeholder="claude-code/default"
               className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-sm"
             />
             <button
@@ -130,7 +154,7 @@ export default function SettingsRoute() {
               type="text"
               value={r}
               onChange={(ev) => setReviewerDefault(ev.target.value)}
-              placeholder="gemini/gemini-2.5-pro"
+              placeholder="provider/model (CLI or OpenRouter)"
               className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-sm"
             />
             <button

@@ -64,6 +64,7 @@ describe("api types", () => {
 
   it("Settings shape matches server", () => {
     const s: Settings = {
+      openrouter_api_key: "",
       default_models: { editor: "", reviewer: "" },
       ingestion: { heading_style: "Heading 1", fallback_patterns: [] },
     };

@@ -92,6 +92,8 @@ export interface IngestionConfig {
   fallback_patterns: string[];
 }
 export interface Settings {
+  // Optional: models outside the provider-CLI namespace route through OpenRouter.
+  openrouter_api_key: string;
   default_models: DefaultModels;
   ingestion: IngestionConfig;
 }

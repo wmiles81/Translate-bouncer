@@ -32,10 +32,8 @@ def test_save_sets_mode_600(translate_root: Path) -> None:
     assert mode == 0o600, f"expected 0o600, got {oct(mode)}"
 
 
-def test_load_ignores_stale_openrouter_key(translate_root: Path) -> None:
-    """Configs written before the subscription switch still load cleanly."""
-    p = translate_root / "config.json"
-    p.write_text('{"openrouter_api_key": "sk-or-stale", "default_models": {"editor": "e", "reviewer": "r"}}')
-    cfg = load_config()
-    assert not hasattr(cfg, "openrouter_api_key")
-    assert cfg.default_models.editor == "e"
+def test_openrouter_key_round_trips(translate_root: Path) -> None:
+    """The OpenRouter key is a supported, optional config field (empty by default)."""
+    assert load_config().openrouter_api_key == ""
+    save_config(Config(openrouter_api_key="sk-or-test"))
+    assert load_config().openrouter_api_key == "sk-or-test"

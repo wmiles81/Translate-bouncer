@@ -19,9 +19,18 @@ def put_settings(cfg: Config) -> Config:
 
 @router.get("/models")
 async def get_models() -> list[dict]:
-    # CLI-routable models in the catalog's model-object shape, with $0 pricing (the
-    # user's subscription covers usage).
-    return model_catalog()
+    # Detected provider CLIs (one "default" entry each, $0 — the subscription covers
+    # usage), plus the live OpenRouter list when an API key is configured.
+    models = model_catalog()
+    cfg = load_config()
+    if cfg.openrouter_api_key:
+        from server.openrouter import OpenRouterClient
+
+        try:
+            models += await OpenRouterClient(api_key=cfg.openrouter_api_key).list_models()
+        except Exception:  # noqa: BLE001 - CLI entries still work without the list
+            pass
+    return models
 
 
 @router.get("/providers")

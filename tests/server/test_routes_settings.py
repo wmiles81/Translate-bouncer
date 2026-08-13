@@ -9,33 +9,84 @@ def test_get_settings_returns_defaults_when_unset(translate_root: Path) -> None:
     client = TestClient(create_app())
     r = client.get("/settings")
     assert r.status_code == 200
-    assert "openrouter_api_key" not in r.json()
+    assert r.json()["openrouter_api_key"] == ""
 
 
 def test_put_settings_persists(translate_root: Path) -> None:
     client = TestClient(create_app())
     r = client.put("/settings", json={
-        "default_models": {"editor": "claude-code/opus", "reviewer": "gemini/gemini-2.5-pro"},
+        "openrouter_api_key": "sk-or-test",
+        "default_models": {"editor": "claude-code/default", "reviewer": "z-ai/glm-4.7"},
     })
     assert r.status_code == 200
     r2 = client.get("/settings")
-    assert "openrouter_api_key" not in r2.json()
-    assert r2.json()["default_models"]["editor"] == "claude-code/opus"
+    assert r2.json()["openrouter_api_key"] == "sk-or-test"
+    assert r2.json()["default_models"]["editor"] == "claude-code/default"
 
 
-def test_get_models_returns_cli_catalog(translate_root: Path) -> None:
-    # No API key, no network: /models serves the static CLI-routable catalog.
+def test_get_models_lists_detected_clis_without_a_key(translate_root: Path, monkeypatch) -> None:
+    # No API key, no network: /models serves one "default" entry per DETECTED CLI.
+    # No named per-provider models — the adapters can't actually switch models.
+    import server.acp_providers as ap
+    import server.routes.settings as settings_routes  # noqa: F401 - route reads ap live
+
+    monkeypatch.setattr(
+        ap, "detect_providers",
+        lambda: [{"id": pid, "name": ap._PROVIDER_NAMES[pid], "detected": pid != "qwen"}
+                 for pid in ap.PROVIDER_LAUNCH],
+    )
     client = TestClient(create_app())
     r = client.get("/models")
     assert r.status_code == 200
     body = r.json()
-    assert len(body) > 0
     ids = {m["id"] for m in body}
-    assert "gemini/gemini-2.5-pro" in ids
-    # Every model is $0 (covered by the subscription) and catalog-shaped.
+    assert ids == {"claude-code/default", "codex/default", "gemini/default"}
     for m in body:
-        assert "/" in m["id"]
         assert m["pricing"] == {"prompt": "0", "completion": "0"}
+
+
+def test_get_models_merges_openrouter_when_key_set(translate_root: Path, monkeypatch) -> None:
+    import server.acp_providers as ap
+    from server.config import Config, save_config
+    from server.openrouter import OpenRouterClient
+
+    save_config(Config(openrouter_api_key="sk-or-test"))
+    monkeypatch.setattr(
+        ap, "detect_providers",
+        lambda: [{"id": pid, "name": ap._PROVIDER_NAMES[pid], "detected": pid == "gemini"}
+                 for pid in ap.PROVIDER_LAUNCH],
+    )
+
+    async def fake_list_models(self):
+        return [{"id": "deepseek/deepseek-v4-pro", "name": "DeepSeek V4 Pro",
+                 "pricing": {"prompt": "0.000001", "completion": "0.000002"}}]
+
+    monkeypatch.setattr(OpenRouterClient, "list_models", fake_list_models)
+    client = TestClient(create_app())
+    ids = {m["id"] for m in client.get("/models").json()}
+    assert ids == {"gemini/default", "deepseek/deepseek-v4-pro"}
+
+
+def test_get_models_survives_openrouter_fetch_failure(translate_root: Path, monkeypatch) -> None:
+    import server.acp_providers as ap
+    from server.config import Config, save_config
+    from server.openrouter import OpenRouterClient
+
+    save_config(Config(openrouter_api_key="sk-or-bad"))
+    monkeypatch.setattr(
+        ap, "detect_providers",
+        lambda: [{"id": pid, "name": ap._PROVIDER_NAMES[pid], "detected": pid == "gemini"}
+                 for pid in ap.PROVIDER_LAUNCH],
+    )
+
+    async def failing_list_models(self):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(OpenRouterClient, "list_models", failing_list_models)
+    client = TestClient(create_app())
+    r = client.get("/models")
+    assert r.status_code == 200
+    assert {m["id"] for m in r.json()} == {"gemini/default"}
 
 
 def test_get_providers_reports_detection(translate_root: Path) -> None:

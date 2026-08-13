@@ -14,6 +14,7 @@ describe("settings api", () => {
     const mock = (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       new Response(
         JSON.stringify({
+          openrouter_api_key: "x",
           default_models: { editor: "e", reviewer: "r" },
           ingestion: { heading_style: "Heading 1", fallback_patterns: [] },
         }),
@@ -29,7 +30,9 @@ describe("settings api", () => {
     const mock = (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          default_models: { editor: "m", reviewer: "" },
+          openrouter_api_key: "y",
+          openrouter_api_key: "y",
+      default_models: { editor: "m", reviewer: "" },
           ingestion: { heading_style: "Heading 1", fallback_patterns: [] },
         }),
         { status: 200 }

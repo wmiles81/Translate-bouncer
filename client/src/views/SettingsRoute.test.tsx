@@ -9,13 +9,14 @@ describe("SettingsRoute", () => {
       const u = String(url);
       if (u === "/settings") {
         return Promise.resolve(new Response(JSON.stringify({
-          default_models: { editor: "claude-code/opus", reviewer: "gemini/gemini-2.5-pro" },
+          openrouter_api_key: "",
+          default_models: { editor: "claude-code/default", reviewer: "z-ai/glm-4.7" },
           ingestion: { heading_style: "Heading 1", fallback_patterns: ["^Chapter\\s+\\d+"] },
         }), { status: 200 }));
       }
       if (u === "/models") return Promise.resolve(new Response(JSON.stringify([
-        { id: "claude-code/opus", name: "Claude Opus", pricing: { prompt: "0", completion: "0" } },
-        { id: "gemini/gemini-2.5-pro", name: "Gemini 2.5 Pro", pricing: { prompt: "0", completion: "0" } },
+        { id: "claude-code/default", name: "Claude Code (Claude Max) — CLI default model", pricing: { prompt: "0", completion: "0" } },
+        { id: "z-ai/glm-4.7", name: "GLM 4.7", pricing: { prompt: "0.0000004", completion: "0.0000016" } },
       ]), { status: 200 }));
       if (u === "/providers") return Promise.resolve(new Response(JSON.stringify([
         { id: "claude-code", name: "Claude Code", detected: true },
@@ -41,8 +42,8 @@ describe("SettingsRoute", () => {
       </MemoryRouter>
     );
     await waitFor(() => expect(screen.getByLabelText(/heading style/i)).toHaveValue("Heading 1"));
-    expect(screen.getByDisplayValue("claude-code/opus")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("gemini/gemini-2.5-pro")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("claude-code/default")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("z-ai/glm-4.7")).toBeInTheDocument();
     expect(screen.getByText("Claude Code")).toBeInTheDocument();
     expect(screen.getByText("Gemini")).toBeInTheDocument();
   });

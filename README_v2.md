@@ -81,9 +81,18 @@ You need three things on your computer:
 2. **Node.js** — download the LTS installer at https://nodejs.org and run
    it. Translate uses this to launch the AI CLI tools below (some are
    fetched on first use via `npx`; nothing is charged for this).
-3. **At least one AI CLI, installed and signed in** — Translate has no API
-   key to configure. Instead it talks to whichever of these you already
-   pay for, using your existing subscription login:
+3. **Install and sign in to at least one AI CLI, and/or set an OpenRouter
+   API key in Settings** — either works on its own; both together work too.
+   Translate routes each model by an **exact** id match: `claude-code/default`,
+   `codex/default`, `gemini/default`, and `qwen/default` go through the
+   matching subscription CLI over ACP at $0 extra cost; every other model id
+   — including OpenRouter's full named-model catalog, and including an id
+   that merely starts with a CLI's name, like `claude-code/opus` or
+   `qwen/qwen3-max` — routes through OpenRouter and bills your OpenRouter
+   account as usual. (This is deliberately an exact match, not a
+   starts-with check: OpenRouter genuinely serves models under a `qwen/...`
+   namespace, so a prefix match would silently reroute those to your local
+   Qwen CLI instead of billing OpenRouter.) To set up a subscription CLI:
 
    ```
    npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli @qwen-code/qwen-code
@@ -99,9 +108,12 @@ You need three things on your computer:
    | Gemini AI Pro | `gemini` |
    | (free) Qwen | `qwen` |
 
-   You only need one. With more than one you get useful contrast — e.g.
-   Claude as Editor, Gemini as Reviewer. Full walkthrough (including a
-   Terms-of-Service note you should read first) is in
+   You only need one CLI. With more than one you get useful contrast — e.g.
+   Claude as Editor, Gemini as Reviewer. If you'd rather use (or also use)
+   OpenRouter's named-model catalog, paste an OpenRouter API key into
+   Settings → OpenRouter — no CLI install needed for that path. Full
+   walkthrough (including a Terms-of-Service note about the subscription-CLI
+   path you should read first) is in
    `USING_YOUR_SUBSCRIPTIONS_INSTEAD_OF_OPENROUTER_v3.md`.
 
 You do **not** need `git` or any other developer tools — the web interface
@@ -189,7 +201,7 @@ Translate.**
 
 From any page, click the **⚙ Settings** button in the top-right.
 
-The Settings page has three sections:
+The Settings page has four sections:
 
 ### AI providers (your subscriptions)
 
@@ -199,11 +211,31 @@ The Settings page has three sections:
   Claude/Codex, the `npx` it launches through) on your computer's PATH.
   Nothing to save here; it's a live status readout.
 - **Refresh model list** — re-checks which provider CLIs are detected and
-  re-fetches the model catalog. Click this after installing or signing
-  into a CLI so Settings picks it up without restarting Translate.
-- The grey number to the right (e.g. "**8 models**") tells you how many
-  models are in Translate's catalog — Claude Opus/Sonnet/Haiku, Gemini
-  2.5 Pro/Flash/Flash-Lite, Codex, and Qwen.
+  re-fetches the model catalog (including a fresh OpenRouter fetch if a key
+  is set). Click this after installing or signing into a CLI, or after
+  saving an OpenRouter key, so Settings picks it up without restarting
+  Translate.
+- The grey number to the right (e.g. "**2 models**") tells you how many
+  models are in Translate's catalog: one `<provider>/default` entry per
+  *detected* CLI (Claude Code, Codex, Gemini CLI, Qwen Code each expose no
+  named models to choose from — a subscription CLI round always runs on
+  that CLI's own current default model), plus, if an OpenRouter API key is
+  set below, the entire live OpenRouter catalog on top of those.
+
+### OpenRouter
+
+- **API key** — a password-style field, optional. Leave it blank to use
+  only your subscription CLIs. Paste an OpenRouter key (`sk-or-...`) to
+  additionally route any model id that *isn't exactly*
+  `claude-code/default`, `codex/default`, `gemini/default`, or
+  `qwen/default` through OpenRouter — this includes OpenRouter's full
+  named-model catalog (Claude Opus, GPT-5, Gemini 2.5 Pro, and hundreds
+  more, including models genuinely named e.g. `qwen/qwen3-max`) once you
+  save and click **Refresh model list**. A model id that merely *looks*
+  like a CLI id but isn't the exact default form — e.g. a hand-typed
+  `claude-code/opus` — also routes through OpenRouter, not the local CLI.
+  OpenRouter rounds bill your OpenRouter account per the model's listed
+  rate; subscription-CLI rounds stay $0.
 
 ### Default models
 
@@ -211,17 +243,24 @@ These are the models that get pre-filled when you open a new chapter. You
 can override them per-chapter from the chapter page.
 
 - **Editor** — the model that does the actual rewriting. Type a model ID
-  (`claude-code/opus`, etc.) or click **Browse…** to pick from a
-  searchable list.
+  (`claude-code/default`, an OpenRouter id, etc.) or click **Browse…** to
+  pick from a searchable list.
 - **Reviewer** — the model that reads the editor's output and writes
   suggestions. Pick a *different* model from the editor for the most
   useful critique.
 
-Click **Save** at the bottom of the section. If a saved default names a
-provider you haven't installed or signed into (or an old model ID left
-over from before this subscription setup, like `anthropic/claude-sonnet-4`),
-the round will fail with a clear error naming the problem rather than
-silently trying something else — see [Troubleshooting](#14-troubleshooting).
+Click **Save** at the bottom of the section. A saved default that is
+**exactly** `claude-code/default`, `codex/default`, `gemini/default`, or
+`qwen/default` but whose CLI isn't installed/signed into fails with a
+clear error naming the problem. Any other saved default — including an id
+left over from before this build added subscription CLIs, like
+`anthropic/claude-sonnet-4`, **and** including an id that merely looks
+like a CLI id without being the exact default form, like `claude-code/opus`
+or `qwen/qwen3-max` (a real OpenRouter model, not your local Qwen CLI) —
+now routes through OpenRouter and works again as soon as you've set an
+OpenRouter API key above; without a key it fails with a clear "needs an
+OpenRouter API key" error rather than silently trying something else — see
+[Troubleshooting](#14-troubleshooting).
 
 ### The Browse models window
 
@@ -230,13 +269,15 @@ catalog:
 
 - **Search** box at the top — filters by model ID or display name.
 - **Sort** dropdown — Provider (default), Release date, Context size.
-- **Free only** checkbox — every model in the catalog is $0 (your
-  subscription covers it, not a per-token bill), so this has nothing left
-  to filter out; it's harmless to leave checked or unchecked.
+- **Free only** checkbox — filters to just the $0 subscription-CLI entries
+  (`claude-code/default`, etc.). With no OpenRouter key set, every model in
+  the catalog is $0 anyway, so the checkbox has nothing left to filter out;
+  with a key set, it hides OpenRouter's priced models.
 - **Provider chips** — click one to filter to just that provider; click again
   to clear. Multiple chips can be active at once.
 - Each row shows: model name, context size in K, and pricing as
-  `$input/$output` per million tokens (always `$0/$0`).
+  `$input/$output` per million tokens — `$0/$0` for subscription-CLI
+  entries, the real OpenRouter rate for everything else.
 - Click a row to select that model and close the window. Click **Close** or
   click outside to cancel.
 
@@ -346,8 +387,8 @@ top-to-bottom:
   to your global default; change per chapter as you like.
 - **Reviewer** picker — same idea for the reviewer.
   - Picker rows show: name (in **red** if the model supports tools), context
-    size, and pricing `$input/$output` per million tokens (always `$0/$0` —
-    subscription models aren't billed per token).
+    size, and pricing `$input/$output` per million tokens — `$0/$0` for
+    subscription-CLI models, the real OpenRouter rate for OpenRouter models.
 - **⚙ Settings** — opens Settings.
 
 ### The three panes
@@ -384,10 +425,10 @@ See [section 10](#10-the-batch-row--running-many-chapters-at-once).
 A scrolling log shows every action with timestamps:
 
 ```
-14:02:15  Ch 3 R2 → Editor (claude-code/opus) · source: round 1 editor output
+14:02:15  Ch 3 R2 → Editor (claude-code/default) · source: round 1 editor output
 14:04:31  Ch 3 R2 ← Editor returned
 14:04:31  ✓ Ch 3 R2 editor complete
-14:04:31  Ch 3 R2 → Reviewer (gemini/gemini-2.5-pro) · source: round 2 editor output
+14:04:31  Ch 3 R2 → Reviewer (anthropic/claude-opus-4) · source: round 2 editor output
 14:07:51  Ch 3 R2 ← Reviewer returned 21 suggestions
 14:07:51  ✓ Ch 3 R2 reviewer complete
 ```
@@ -395,11 +436,14 @@ A scrolling log shows every action with timestamps:
 - Grey lines are in-progress events; green lines are completions; red
   lines are errors.
 - A **live preview pane** shows the current chapter's in-progress model
-  output while a round is running. It arrives in small batched updates
-  (roughly every 300 characters) rather than one smooth stream, and it only
-  ever shows the chapter you're currently viewing — during a batch run, the
-  pane goes quiet while other chapters are being worked on (the activity
-  log below it still records every chapter). That's expected, not a stall.
+  output while a round is running. For a subscription-CLI round it arrives
+  in small batched updates (roughly every 300 characters) rather than one
+  smooth stream. For an OpenRouter round there's no token-by-token stream
+  from the API at all, so the pane stays empty and then fills with the
+  whole reply at once when it arrives. Either way, it only ever shows the
+  chapter you're currently viewing — during a batch run, the pane goes
+  quiet while other chapters are being worked on (the activity log below
+  it still records every chapter). That's expected, not a stall.
 - Below the log: a single status line shows the most recent event plus
   elapsed seconds when a model is running, plus two buttons:
   - **Continue** — run one round of *Editor → Reviewer → Editor (apply)*.
@@ -514,7 +558,7 @@ Everything Translate stores is under `~/.translate/`:
 
 | Path | What it is |
 |------|------------|
-| `~/.translate/config.json` | Default models and ingestion patterns. Permission `600`. No API key is stored — Translate authenticates through whichever AI CLI you've signed into, not a saved credential. |
+| `~/.translate/config.json` | Default models, ingestion patterns, and (optionally) your OpenRouter API key. Permission `600`. Subscription-CLI models need no saved credential — Translate authenticates through whichever AI CLI you've signed into — but if you use OpenRouter, its key is stored here. |
 | `~/.translate/prompts/editor.json` | Editor prompt and full version history. |
 | `~/.translate/prompts/reviewer.json` | Reviewer prompt and full version history. |
 | `~/.translate/.lock` | Single-instance lock (PID + URL). Deleted when Translate quits cleanly. |
@@ -555,14 +599,24 @@ running. Reopen the URL printed in the terminal to come back.
 
 ## 14. Troubleshooting
 
-**"HTTP 400: Unknown provider '…'" or "… is not installed"** — the model you
-requested names a provider Translate doesn't recognize, or a provider CLI
-that isn't detected. This is checked *before* anything is sent to the model,
-so nothing runs and nothing is charged against your subscription's usage.
-Common cause: a saved default left over from before this build switched to
-subscription CLIs (e.g. an old id like `anthropic/claude-sonnet-4`). Open
-Settings, confirm the provider you want shows as detected (●), and pick a
-model from the Browse list or the top-bar dropdowns.
+**"HTTP 400: … is not installed"** — the model you requested is
+**exactly** `claude-code/default`, `codex/default`, `gemini/default`, or
+`qwen/default`, but that provider CLI isn't detected. This is checked
+*before* anything is sent to the model, so nothing runs and nothing is
+charged against your subscription's usage. Open Settings, confirm the
+provider you want shows as detected (●), and pick a model from the Browse
+list or the top-bar dropdowns.
+
+**"HTTP 400: … routes through OpenRouter, but no OpenRouter API key is
+configured"** — the model id isn't an exact `<cli>/default` match for one
+of the four subscription CLIs. This covers a genuine OpenRouter model id,
+an old id left over from before this build added subscription CLIs (like
+`anthropic/claude-sonnet-4`), **and** an id that merely looks like a CLI
+id without being the exact default form — e.g. `claude-code/opus`, or
+`qwen/qwen3-max` (a real OpenRouter-hosted Qwen model, billed through
+OpenRouter, not run on your local Qwen CLI). Open Settings → OpenRouter
+and paste your API key, then click Continue again — or switch to the
+`<provider>/default` model from a detected CLI instead.
 
 **"HTTP 422: expected N blocks, found 0"** — the editor model returned text
 in a format Translate couldn't parse. The raw response is saved to
@@ -571,12 +625,14 @@ in a format Translate couldn't parse. The raw response is saved to
 this is a smaller / weaker model getting the format wrong; pick a stronger
 editor model and click Continue again.
 
-**"transient" / the round failed after retrying** — the AI CLI process hit a
-hiccup (a crash, a rate limit, or a timeout waiting for it to respond).
-Translate already retries three times automatically (1s, 2s, 4s backoff),
-restarting the agent connection before each retry. If you still see this
-after retries, it's worth checking the CLI still works on its own (run it
-by name in a terminal) before clicking Continue again.
+**"transient" / the round failed after retrying** — for a subscription-CLI
+round, the AI CLI process hit a hiccup (a crash, a rate limit, or a timeout
+waiting for it to respond); for an OpenRouter round, OpenRouter returned a
+5xx or rate-limit response. Either way Translate already retries three
+times automatically (1s, 2s, 4s backoff), restarting the agent connection
+before each CLI retry. If you still see this after retries, it's worth
+checking the CLI still works on its own (run it by name in a terminal), or
+OpenRouter's status page, before clicking Continue again.
 
 **"agent requires sign-in" / usage-limit message** — you're signed out of
 that provider's CLI, or you've hit your plan's usage cap. Run the CLI by
@@ -584,6 +640,9 @@ name (e.g. `claude`, `codex`, `gemini`, `qwen`) to re-authenticate, or wait
 for the cap to reset (Codex/ChatGPT Plus has a daily cap; see
 `USING_YOUR_SUBSCRIPTIONS_INSTEAD_OF_OPENROUTER_v3.md`). This error is
 never retried automatically, since retrying can't fix a sign-in problem.
+The equivalent OpenRouter failure is **"OpenRouter rejected the API key"**
+(HTTP 401/403) — check the key in Settings — which is likewise never
+retried.
 
 **Activity log is empty / nothing happens when I click Continue** — make
 sure at least one provider shows as detected (●) in Settings, and that the
@@ -663,8 +722,11 @@ server/                    Python FastAPI server
   finalize.py              writes final.docx
   acp_providers.py         ACP client — routes Editor/Reviewer chats through
                            locally-installed AI CLIs (Claude Code, Codex,
-                           Gemini, Qwen) over the Agent Client Protocol;
-                           replaces the old openrouter.py
+                           Gemini, Qwen) over the Agent Client Protocol
+  openrouter.py            OpenRouter HTTP client — routes any model id
+                           outside the four CLI providers, when an API key
+                           is configured; coexists with acp_providers.py,
+                           picked per-round by server/routes/chapters.py
   routes/                  FastAPI route modules
 client/                    React + Vite + TypeScript SPA
   src/views/               BookListRoute, BookViewRoute, ChapterRoute,
@@ -684,7 +746,7 @@ docs/                      design docs and plans
 
 - `GET  /health` — liveness check
 - `GET  /settings`, `PUT /settings` — config
-- `GET  /models` — static catalog of routable models ($0 pricing; no API key, no network call)
+- `GET  /models` — one `$0` `<provider>/default` entry per detected subscription-CLI provider, plus the live OpenRouter catalog (real pricing) appended when an OpenRouter API key is configured (a network call to OpenRouter; falls back to just the CLI entries if that call fails)
 - `GET  /providers` — `[{id, name, detected}]` for each provider CLI, used by the Settings status list
 - `GET  /prompts/{kind}`, `PUT /prompts/{kind}` — prompts with version history
   - `POST /prompts/{kind}/restore/{version_id}`
