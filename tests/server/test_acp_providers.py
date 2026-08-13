@@ -217,6 +217,16 @@ class _FakeAcpConnection:
         self.init_hang = init_hang
         self.cancelled: list[str] = []
         self.closed_sessions: list[str] = []
+        self.initialize_params: list[dict] = []
+        # Production code initializes via the low-level dict path (see
+        # _initialize_connection); route it through the same init_exc/init_hang knobs.
+        self._conn = SimpleNamespace(send_request=self._send_request)
+
+    async def _send_request(self, method, params):
+        assert method == "initialize", f"unexpected raw request: {method}"
+        self.initialize_params.append(params)
+        await self.initialize()
+        return {}
 
     async def initialize(self, **kw):
         if self.init_hang:
@@ -240,11 +250,15 @@ class _FakeAcpConnection:
         self.closed_sessions.append(kw.get("session_id"))
 
 
-def _fake_spawn(connections: list[_FakeAcpConnection], procs: list) -> object:
+def _fake_spawn(
+    connections: list[_FakeAcpConnection], procs: list, spawn_kwargs: list | None = None
+) -> object:
     """Build a spawn_agent_process replacement that records kill() via proc.returncode."""
 
     @asynccontextmanager
-    async def spawn(client, executable, *args, env=None):
+    async def spawn(client, executable, *args, env=None, **kwargs):
+        if spawn_kwargs is not None:
+            spawn_kwargs.append(kwargs)
         conn = connections.pop(0)
         proc = SimpleNamespace(returncode=None)
         proc.kill = lambda: setattr(proc, "returncode", -9)
@@ -255,6 +269,41 @@ def _fake_spawn(connections: list[_FakeAcpConnection], procs: list) -> object:
             proc.kill()  # mirrors real behavior: CM exit terminates the subprocess
 
     return spawn
+
+
+async def test_initialize_sends_explicit_client_capabilities(monkeypatch) -> None:
+    """gemini --experimental-acp hard-requires clientCapabilities (zod: Required), but
+    the SDK's typed initialize() strips the default value from the wire
+    (exclude_defaults) -> -32602 Invalid params. We must send the dict explicitly."""
+    procs: list = []
+    conn_obj = _FakeAcpConnection()
+    monkeypatch.setattr(ap, "spawn_agent_process", _fake_spawn([conn_obj], procs))
+    mgr = AcpConnectionManager()
+    await mgr.get("gemini")
+    assert conn_obj.initialize_params == [{
+        "protocolVersion": 1,
+        "clientCapabilities": {
+            "fs": {"readTextFile": False, "writeTextFile": False},
+            "terminal": False,
+        },
+    }]
+    await mgr.aclose()
+
+
+async def test_spawn_raises_the_stdio_stream_limit(monkeypatch) -> None:
+    """Agents emit single JSON lines far beyond asyncio's 64KiB default (e.g. the
+    available-commands session update); the default limit kills the connection with
+    LimitOverrunError -> "Connection closed" on every turn."""
+    procs: list = []
+    spawn_kwargs: list = []
+    monkeypatch.setattr(
+        ap, "spawn_agent_process", _fake_spawn([_FakeAcpConnection()], procs, spawn_kwargs)
+    )
+    mgr = AcpConnectionManager()
+    await mgr.get("gemini")
+    assert spawn_kwargs[0].get("transport_kwargs") == {"limit": ap.STREAM_LIMIT}
+    assert ap.STREAM_LIMIT >= 8 * 1024 * 1024
+    await mgr.aclose()
 
 
 async def test_failed_initialize_terminates_the_spawned_process(monkeypatch) -> None:

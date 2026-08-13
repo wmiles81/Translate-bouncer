@@ -42,6 +42,11 @@ DEFAULT_RETRY_DELAYS = (1.0, 2.0, 4.0)  # 3 attempts at 1s, 2s, 4s
 PROMPT_TIMEOUT = 600.0  # seconds per prompt
 SPAWN_TIMEOUT = 120.0  # spawn + initialize; npx may download the adapter on first use
 SESSION_TIMEOUT = 60.0  # new_session / set_session_model / close_session
+# ACP is newline-delimited JSON; agents emit single lines far beyond asyncio's 64KiB
+# default StreamReader limit (e.g. Claude Code's available-commands session update on a
+# machine with many installed commands). Exceeding it raises LimitOverrunError and kills
+# the connection with "Connection closed" on every turn.
+STREAM_LIMIT = 8 * 1024 * 1024  # bytes
 
 # provider id -> (executable, [args]) used to launch the agent in ACP mode.
 # All are Node-based; Claude/Codex go through a separate ACP adapter package.
@@ -285,6 +290,27 @@ class AcpConnectionManager:
             self._conns[provider] = conn
             return conn
 
+    @staticmethod
+    async def _initialize(connection: Agent) -> None:
+        """Send ``initialize`` with explicit dict params.
+
+        The SDK's typed ``initialize()`` serializes with ``exclude_defaults``, which
+        strips the default ``ClientCapabilities()`` from the wire — and gemini's
+        ``--experimental-acp`` hard-requires ``clientCapabilities`` (zod: Required),
+        rejecting the request with -32602 Invalid params. There is no public
+        dict-params path, so go through the underlying connection directly.
+        """
+        await connection._conn.send_request(  # noqa: SLF001 - see docstring
+            "initialize",
+            {
+                "protocolVersion": PROTOCOL_VERSION,
+                "clientCapabilities": {
+                    "fs": {"readTextFile": False, "writeTextFile": False},
+                    "terminal": False,
+                },
+            },
+        )
+
     async def _spawn(self, provider: str) -> _Conn:
         cmd, args = PROVIDER_LAUNCH[provider]
         env = _subprocess_env()
@@ -296,14 +322,14 @@ class AcpConnectionManager:
         try:
             connection, proc = await asyncio.wait_for(
                 stack.enter_async_context(
-                    spawn_agent_process(client, executable, *args, env=env)
+                    spawn_agent_process(
+                        client, executable, *args, env=env,
+                        transport_kwargs={"limit": STREAM_LIMIT},
+                    )
                 ),
                 timeout=SPAWN_TIMEOUT,
             )
-            await asyncio.wait_for(
-                connection.initialize(protocol_version=PROTOCOL_VERSION),
-                timeout=SPAWN_TIMEOUT,
-            )
+            await asyncio.wait_for(self._initialize(connection), timeout=SPAWN_TIMEOUT)
         except Exception as exc:  # noqa: BLE001 - normalize to our error taxonomy
             await stack.aclose()  # terminates the agent process if it was spawned
             if isinstance(exc, asyncio.TimeoutError):
