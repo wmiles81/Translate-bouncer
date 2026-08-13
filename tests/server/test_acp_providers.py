@@ -266,3 +266,56 @@ async def test_aclose_discards_connections_and_removes_cwd(monkeypatch, tmp_path
     await mgr.aclose()
     assert not os.path.isdir(cwd), "translate-acp-* temp dir leaked"
     assert procs[0].returncode is not None
+
+
+def _chunk(text: str):
+    """Minimal stand-in matching the AgentMessageChunk isinstance check via monkeypatch."""
+    from acp.schema import AgentMessageChunk, TextContentBlock
+
+    return AgentMessageChunk(
+        session_update="agent_message_chunk",
+        content=TextContentBlock(type="text", text=text),
+    )
+
+
+async def test_streaming_client_ignores_chunks_from_other_sessions() -> None:
+    from server.acp_providers import _StreamingClient
+
+    c = _StreamingClient()
+    seen: list[str] = []
+    c.begin_turn(session_id="live", on_text=seen.append)
+    await c.session_update(session_id="stale", update=_chunk("GARBAGE"))
+    await c.session_update(session_id="live", update=_chunk("ok"))
+    c.end_turn()
+    await c.session_update(session_id="live", update=_chunk("late"))
+    assert seen == ["ok"]
+
+
+async def test_prompt_timeout_cancels_and_discards_the_connection(monkeypatch) -> None:
+    procs: list = []
+    conn_obj = _FakeAcpConnection()
+
+    async def hanging_prompt(**kw):
+        await asyncio.sleep(3600)
+
+    conn_obj.prompt = hanging_prompt
+    monkeypatch.setattr(ap, "spawn_agent_process", _fake_spawn([conn_obj], procs))
+    monkeypatch.setattr(ap, "PROMPT_TIMEOUT", 0.05)
+    mgr = AcpConnectionManager()
+    with pytest.raises(TransientError, match="timed out"):
+        await mgr.run_turn(provider="gemini", model_arg="", payload="p", on_token=None)
+    assert conn_obj.cancelled == ["sid-1"], "session/cancel not sent on timeout"
+    assert "gemini" not in mgr._conns, "timed-out connection must not be reused"
+    assert procs[0].returncode is not None
+    await mgr.aclose()
+
+
+async def test_successful_turn_closes_its_session(monkeypatch) -> None:
+    procs: list = []
+    conn_obj = _FakeAcpConnection()
+    monkeypatch.setattr(ap, "spawn_agent_process", _fake_spawn([conn_obj], procs))
+    mgr = AcpConnectionManager()
+    out = await mgr.run_turn(provider="gemini", model_arg="", payload="p", on_token=None)
+    assert out == ""
+    assert conn_obj.closed_sessions == ["sid-1"]
+    await mgr.aclose()

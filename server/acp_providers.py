@@ -179,19 +179,31 @@ def split_model(model: str) -> tuple[str, str]:
 class _StreamingClient(Client):
     """ACP client that denies all tools and forwards streamed assistant text.
 
-    A single instance is reused per connection; ``on_text`` is swapped in for the duration
-    of each turn (turns are serialized per connection, so this is safe).
+    A single instance is reused per connection. ``begin_turn`` arms it with the live
+    session id and sink for the duration of a turn (turns are serialized per connection;
+    chunks from any other session — e.g. a cancelled turn still streaming — are dropped.
     """
 
     def __init__(self) -> None:
+        self.session_id: Optional[str] = None
         self.on_text: Optional[Callable[[str], None]] = None
+
+    def begin_turn(self, *, session_id: str, on_text: Callable[[str], None]) -> None:
+        self.session_id = session_id
+        self.on_text = on_text
+
+    def end_turn(self) -> None:
+        self.session_id = None
+        self.on_text = None
 
     async def request_permission(self, options, session_id, tool_call, **kwargs):  # type: ignore[override]
         # Pure text transform: never let the coding agent run a tool.
         return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
 
     async def session_update(self, session_id, update, **kwargs):  # type: ignore[override]
-        if isinstance(update, AgentMessageChunk) and self.on_text is not None:
+        if session_id != self.session_id or self.on_text is None:
+            return  # stale/foreign session or no active turn
+        if isinstance(update, AgentMessageChunk):
             text = getattr(update.content, "text", None)
             if isinstance(text, str) and text:
                 self.on_text(text)
@@ -304,6 +316,7 @@ class AcpConnectionManager:
         model_arg: str,
         payload: str,
         on_token: Optional[Callable[[str], None]],
+        on_notice: Optional[Callable[[str], None]] = None,
     ) -> str:
         conn = await self.get(provider)
         async with conn.lock:
@@ -314,16 +327,32 @@ class AcpConnectionManager:
                 if on_token is not None:
                     on_token(chunk)
 
-            conn.client.on_text = sink
+            sid: Optional[str] = None
             try:
-                session = await conn.connection.new_session(cwd=self._cwd)
+                session = await asyncio.wait_for(
+                    conn.connection.new_session(cwd=self._cwd), timeout=SESSION_TIMEOUT
+                )
                 sid = session.session_id
+                conn.client.begin_turn(session_id=sid, on_text=sink)
                 target = self._resolve_model(model_arg, getattr(session, "models", None))
                 if target is not None:
                     try:
-                        await conn.connection.set_session_model(model_id=target, session_id=sid)
-                    except Exception:  # noqa: BLE001 - model switch is best-effort
-                        pass
+                        await asyncio.wait_for(
+                            conn.connection.set_session_model(model_id=target, session_id=sid),
+                            timeout=SESSION_TIMEOUT,
+                        )
+                    except Exception as exc:  # noqa: BLE001 - model switch is best-effort
+                        if on_notice is not None:
+                            on_notice(
+                                f"could not select model '{model_arg}' ({exc}); "
+                                "using the agent's current default"
+                            )
+                elif model_arg and model_arg != "default":
+                    if on_notice is not None:
+                        on_notice(
+                            f"model '{model_arg}' is not exposed by {provider}; "
+                            "using the agent's default model"
+                        )
                 await asyncio.wait_for(
                     conn.connection.prompt(prompt=[text_block(payload)], session_id=sid),
                     timeout=PROMPT_TIMEOUT,
@@ -331,12 +360,29 @@ class AcpConnectionManager:
             except (ConfigurationError, TransientError):
                 raise
             except asyncio.TimeoutError as exc:
+                # The agent may still be generating into this session; the connection
+                # can't be trusted for reuse (late chunks would contaminate a retry).
+                if sid is not None:
+                    try:
+                        await asyncio.wait_for(
+                            conn.connection.cancel(session_id=sid), timeout=5.0
+                        )
+                    except Exception:  # noqa: BLE001 - cancel is best-effort
+                        pass
+                await self._discard(provider, conn)
                 raise TransientError(f"agent timed out after {PROMPT_TIMEOUT:.0f}s") from exc
             except Exception as exc:  # noqa: BLE001
                 raise _classify(exc) from exc
+            else:
+                try:
+                    await asyncio.wait_for(
+                        conn.connection.close_session(session_id=sid), timeout=SESSION_TIMEOUT
+                    )
+                except Exception:  # noqa: BLE001 - close_session is optional in ACP
+                    pass
+                return "".join(parts)
             finally:
-                conn.client.on_text = None
-            return "".join(parts)
+                conn.client.end_turn()
 
     async def aclose(self) -> None:
         for provider, conn in list(self._conns.items()):
