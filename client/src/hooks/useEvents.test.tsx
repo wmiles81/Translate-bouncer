@@ -58,4 +58,39 @@ describe("useEvents", () => {
     unmount();
     expect(es.closed).toBe(true);
   });
+
+  it("delivers events to the latest handler, not the one captured at mount", () => {
+    // Regression test: the EventSource connection is opened once, on mount
+    // (effect deps []), but a caller's onEvent callback can change on every
+    // render (e.g. ChapterRoute's handler closes over route params like the
+    // chapter number, which change on in-app navigation without a remount —
+    // React Router doesn't remount a route element on a params-only nav).
+    // If the handler were frozen at mount, a second event would still be
+    // routed to the first render's stale closure.
+    const seenFirst: AppEvent[] = [];
+    const seenSecond: AppEvent[] = [];
+    const { rerender } = render(
+      <Probe onEvent={(e) => seenFirst.push(e)} />
+    );
+    expect(FakeEventSource.instances).toHaveLength(1);
+    const es = FakeEventSource.instances[0];
+
+    act(() => {
+      es.emit({ type: "status", text: "first" });
+    });
+    expect(seenFirst).toEqual([{ type: "status", text: "first" }]);
+    expect(seenSecond).toEqual([]);
+
+    // Re-render with a new onEvent closure. No new EventSource is opened —
+    // same instance, same subscription — only the handler prop changed.
+    rerender(<Probe onEvent={(e) => seenSecond.push(e)} />);
+    expect(FakeEventSource.instances).toHaveLength(1);
+
+    act(() => {
+      es.emit({ type: "status", text: "second" });
+    });
+    // The stale-closure bug would have delivered this to seenFirst instead.
+    expect(seenSecond).toEqual([{ type: "status", text: "second" }]);
+    expect(seenFirst).toEqual([{ type: "status", text: "first" }]);
+  });
 });
