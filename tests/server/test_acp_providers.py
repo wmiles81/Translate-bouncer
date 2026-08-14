@@ -499,3 +499,74 @@ def test_configuration_errors_name_the_provider_and_how_to_fix_it() -> None:
     # Transient errors pass through untouched (they retry; no user action implied).
     t = TransientError("connection reset")
     assert _with_provider_context("gemini", t) is t
+
+
+def test_adapter_detail_extracts_the_real_cause_from_stderr() -> None:
+    """Adapters return a bare 'Internal error' over ACP and log the real reason to
+    stderr; the user must see the reason."""
+    from collections import deque
+
+    from server.acp_providers import _adapter_detail
+
+    tail = deque([
+        "2026-08-14T14:49:22Z  INFO codex_acp: starting",
+        '2026-08-14T14:49:22Z ERROR codex_acp::thread: Unhandled error during turn: '
+        '{"type":"error","status":400,"error":{"type":"invalid_request_error",'
+        '"message":"The \'gpt-5.6-sol\' model requires a newer version of Codex."}}',
+    ])
+    assert _adapter_detail(tail) == (
+        "The 'gpt-5.6-sol' model requires a newer version of Codex."
+    )
+    assert _adapter_detail(deque()) == ""
+
+
+def test_unsupported_model_is_a_configuration_error_not_a_retry() -> None:
+    """'requires a newer version' means the picked model can never run on this
+    adapter — surface it as user-actionable instead of retrying three times."""
+    from server.acp_providers import _classify_turn
+
+    out = _classify_turn(
+        Exception("Internal error"),
+        "The 'gpt-5.6-sol' model requires a newer version of Codex.",
+        "codex",
+        "gpt-5.6-sol",
+    )
+    assert isinstance(out, ConfigurationError)
+    assert "codex/gpt-5.6-sol" in str(out)
+    assert "pick an older model" in str(out)
+
+    # Other failures keep their class but gain the adapter's detail.
+    out2 = _classify_turn(Exception("Internal error"), "stream disconnected", "codex", "gpt-5.5")
+    assert isinstance(out2, TransientError)
+    assert "stream disconnected" in str(out2)
+
+
+def test_adapter_detail_survives_ansi_colour_and_trailing_text() -> None:
+    """Real adapter stderr is ANSI-coloured and prints trailing text after the JSON."""
+    from collections import deque
+
+    from server.acp_providers import _ANSI_RE, _adapter_detail
+
+    raw = (
+        "\x1b[2m2026-08-14T14:49:22Z\x1b[0m \x1b[31mERROR\x1b[0m "
+        '\x1b[2mcodex_acp::thread\x1b[0m: Unhandled error during turn: '
+        '{"type":"error","status":400,"error":{"message":"The \'gpt-5.6-sol\' model '
+        'requires a newer version of Codex."}} Some(Other)'
+    )
+    tail = deque([_ANSI_RE.sub("", raw)])
+    assert _adapter_detail(tail) == (
+        "The 'gpt-5.6-sol' model requires a newer version of Codex."
+    )
+
+
+def test_signin_hint_only_on_auth_failures() -> None:
+    """A model-support or missing-binary error must not tell the user to log in."""
+    from server.acp_providers import _with_provider_context
+
+    auth = _with_provider_context("codex", ConfigurationError("Authentication required"))
+    assert "codex login" in str(auth)
+
+    unsupported = _with_provider_context(
+        "codex", ConfigurationError("requires a newer version of Codex — pick an older model")
+    )
+    assert "login" not in str(unsupported)

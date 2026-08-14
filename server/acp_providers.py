@@ -21,10 +21,12 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 import tempfile
+from collections import deque
 from contextlib import AsyncExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional, Sequence
 
@@ -231,11 +233,59 @@ def _with_provider_context(provider: str, exc: Exception) -> Exception:
     if not isinstance(exc, ConfigurationError):
         return exc
     name = _PROVIDER_NAMES.get(provider, provider)
-    hint = _SIGNIN_HINT.get(provider)
+    low = str(exc).lower()
+    # Only an auth failure is fixed by signing in; a missing binary or a model the
+    # adapter can't drive each carry their own remedy already.
+    auth_shaped = any(h in low for h in ("auth", "login", "log in", "sign in", "credential"))
     msg = f"{name}: {exc}"
-    if hint and "not found" not in str(exc).lower():
+    hint = _SIGNIN_HINT.get(provider) if auth_shaped else None
+    if hint:
         msg += f" — {hint}, then try again."
     return ConfigurationError(msg)
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+async def _drain_stderr(stream, buf: deque) -> None:
+    """Keep the last few adapter stderr lines; never raise into the caller."""
+    try:
+        while True:
+            line = await stream.readline()
+            if not line:
+                return
+            text = _ANSI_RE.sub("", line.decode("utf-8", "replace")).strip()
+            if text:
+                buf.append(text)
+    except Exception:  # noqa: BLE001 - diagnostics only
+        return
+
+
+def _adapter_detail(tail: deque) -> str:
+    """Best-effort human cause from adapter stderr.
+
+    Adapters log structured errors like
+    ``... ERROR codex_acp::thread: Unhandled error during turn: {"type":"error",
+    ...,"error":{"message":"The 'gpt-5.6-sol' model requires a newer version of
+    Codex..."}}`` — pull the innermost message when present.
+    """
+    for line in reversed(tail):
+        if '"message"' in line:
+            start = line.find("{")
+            while start != -1:
+                try:  # raw_decode: adapters print trailing text after the JSON
+                    obj, _ = json.JSONDecoder().raw_decode(line[start:])
+                except ValueError:
+                    start = line.find("{", start + 1)
+                    continue
+                err = obj.get("error") if isinstance(obj, dict) else None
+                msg = (err or {}).get("message") if isinstance(err, dict) else None
+                if msg:
+                    return str(msg)
+                break
+        if "ERROR" in line:
+            return line.split("ERROR", 1)[1].strip(" :") or line
+    return ""
 
 
 def _classify(exc: Exception) -> Exception:
@@ -253,6 +303,27 @@ def _classify(exc: Exception) -> Exception:
     if any(h in low for h in _CONFIG_ERROR_HINTS):
         return ConfigurationError(msg)
     return TransientError(msg or type(exc).__name__)
+
+
+def _classify_turn(exc: Exception, detail: str, provider: str, model_arg: str) -> Exception:
+    """Classify a failed turn, using the adapter's stderr detail when the ACP
+    error itself is uninformative (e.g. a bare "Internal error").
+
+    A model the adapter's bundled core can't drive is a ConfigurationError: the
+    user must pick another model, so retrying three times only wastes time.
+    """
+    low = f"{exc} {detail}".lower()
+    if "requires a newer version" in low or "upgrade to the latest" in low:
+        model = f"{provider}/{model_arg}" if model_arg else provider
+        return ConfigurationError(
+            f"{detail or exc} (model '{model}') — pick an older model in the picker, "
+            "or update the CLI and its ACP adapter."
+        )
+    out = _classify(exc)
+    if detail and detail.lower() not in str(exc).lower():
+        msg = f"{exc}: {detail}"
+        return type(out)(msg)
+    return out
 
 
 def split_model(model: str) -> tuple[str, str]:
@@ -326,6 +397,10 @@ class _Conn:
     client: _StreamingClient
     lock: asyncio.Lock
     stack: AsyncExitStack  # owns the subprocess; closing it terminates the agent
+    # Adapters report the real cause on stderr and return a bare "Internal error"
+    # over ACP, so keep a short tail to attach to failures.
+    stderr_tail: deque = field(default_factory=lambda: deque(maxlen=20))
+    stderr_task: Optional[asyncio.Task] = None
 
 
 class AcpConnectionManager:
@@ -357,6 +432,8 @@ class AcpConnectionManager:
         """Remove a connection from the pool and terminate its agent (best-effort)."""
         if self._conns.get(key) is conn:
             self._conns.pop(key, None)
+        if conn.stderr_task is not None:
+            conn.stderr_task.cancel()
         try:
             if self._alive(conn):
                 conn.proc.kill()  # type: ignore[attr-defined]
@@ -432,10 +509,15 @@ class AcpConnectionManager:
                     f"{provider} agent did not respond within {SPAWN_TIMEOUT:.0f}s of launch"
                 ) from exc
             raise _with_provider_context(provider, _classify(exc)) from exc
-        return _Conn(
+        conn = _Conn(
             connection=connection, proc=proc, client=client,
             lock=asyncio.Lock(), stack=stack,
         )
+        if getattr(proc, "stderr", None) is not None:
+            conn.stderr_task = asyncio.create_task(
+                _drain_stderr(proc.stderr, conn.stderr_tail)
+            )
+        return conn
 
     @staticmethod
     def _resolve_model(model_arg: str, models_state) -> Optional[str]:
@@ -522,7 +604,10 @@ class AcpConnectionManager:
                 await self._discard(key, conn)
                 raise TransientError(f"agent timed out after {PROMPT_TIMEOUT:.0f}s") from exc
             except Exception as exc:  # noqa: BLE001
-                raise _with_provider_context(provider, _classify(exc)) from exc
+                detail = _adapter_detail(conn.stderr_tail)
+                raise _with_provider_context(
+                    provider, _classify_turn(exc, detail, provider, model_arg)
+                ) from exc
             else:
                 try:
                     await asyncio.wait_for(
