@@ -18,6 +18,20 @@ describe("useFetch", () => {
     expect(result.current.error).toBeNull();
   });
 
+  it("refetches when the tab regains focus (a stale tab self-heals)", async () => {
+    let calls = 0;
+    const fetcher = vi.fn(async () => {
+      calls += 1;
+      return [`result-${calls}`];
+    });
+    const { result } = renderHook(() => useFetch<string[]>(fetcher, []));
+    await waitFor(() => expect(result.current.data).toEqual(["result-1"]));
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(result.current.data).toEqual(["result-2"]));
+  });
+
   it("captures fetch errors without throwing", async () => {
     const fetcher = vi.fn(async () => {
       throw new Error("nope");
