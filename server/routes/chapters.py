@@ -43,6 +43,9 @@ router = APIRouter()
 
 class RoundRequest(BaseModel):
     model: str
+    # True = the in-round pass applying THIS round's reviewer suggestions; it
+    # writes round-N-editor-revised.* and does not start a new round.
+    apply_suggestions: bool = False
 
 
 def _make_client(model: str):
@@ -135,13 +138,18 @@ def _load_source(slug: str, n: int) -> tuple[ParsedDoc, ParsedDoc]:
     return en, tr
 
 
+def _round_doc_path(slug: str, n: int, round_n: int) -> Path:
+    """Latest editor output for a round: the revised pass if it ran, else the draft."""
+    cdir = book_dir(slug) / "chapters" / f"ch{n:02d}"
+    revised = cdir / f"round-{round_n}-editor-revised.json"
+    return revised if revised.exists() else cdir / f"round-{round_n}-editor.json"
+
+
 def _current_target_doc(slug: str, n: int, current_round: int) -> ParsedDoc:
     bd = book_dir(slug)
     if current_round < 1:
         return ParsedDoc.model_validate_json((bd / "source-translated" / f"ch{n:02d}.json").read_text())
-    return ParsedDoc.model_validate_json(
-        (bd / "chapters" / f"ch{n:02d}" / f"round-{current_round}-editor.json").read_text()
-    )
+    return ParsedDoc.model_validate_json(_round_doc_path(slug, n, current_round).read_text())
 
 
 def _last_reviewer_suggestions(slug: str, n: int, round_n: int) -> Optional[list]:
@@ -172,7 +180,16 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
 
     bm = load_book_meta(slug)
     cm = load_chapter_meta(slug, n=n)
-    next_round = cm.current_round + 1
+    # Applying this round's suggestions stays IN the round; a plain editor pass
+    # opens the next one. One requested round therefore = one round number.
+    revising = req.apply_suggestions and cm.current_round >= 1
+    if revising and not _last_reviewer_suggestions(slug, n, cm.current_round):
+        raise HTTPException(
+            status_code=400,
+            detail=f"no reviewer suggestions to apply for round {cm.current_round}",
+        )
+    next_round = cm.current_round if revising else cm.current_round + 1
+    out_suffix = "-revised" if revising else ""
     en_doc, _ = _load_source(slug, n)
     target_doc = _current_target_doc(slug, n, cm.current_round)
     suggestions = _last_reviewer_suggestions(slug, n, cm.current_round)
@@ -215,6 +232,7 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
             on_retry=on_retry,
             on_token=on_token,
             on_notice=on_notice,
+            out_suffix=out_suffix,
         )
     except RecoverableError as exc:
         on_token.reset()
@@ -239,11 +257,17 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
     })
     EVENT_BUS.publish({"type": "round_complete", "round": next_round, "stage": "editor", "chapter": n})
 
-    cm.current_round = next_round
     cm.status = ChapterStatus.IN_PROGRESS
     cm.models.editor = req.model
     cm.prompts_used.editor_version = editor_prompt.current
-    cm.rounds.append(RoundEntry(n=next_round, editor_completed_at=now_iso()))
+    if revising:
+        for entry in cm.rounds:
+            if entry.n == next_round:
+                entry.revised_completed_at = now_iso()
+                break
+    else:
+        cm.current_round = next_round
+        cm.rounds.append(RoundEntry(n=next_round, editor_completed_at=now_iso()))
     save_chapter_meta(slug, cm)
     return cm.model_dump()
 
@@ -384,12 +408,12 @@ def get_chapter_docs(slug: str, n: int) -> dict:
         working = ParsedDoc.model_validate_json(tr_path.read_text()).model_dump()
         previous = None
     else:
-        wp = bd / "chapters" / f"ch{n:02d}" / f"round-{cm.current_round}-editor.json"
+        wp = _round_doc_path(slug, n, cm.current_round)
         working = ParsedDoc.model_validate_json(wp.read_text()).model_dump()
         if cm.current_round == 1:
             previous = ParsedDoc.model_validate_json(tr_path.read_text()).model_dump()
         else:
-            pp = bd / "chapters" / f"ch{n:02d}" / f"round-{cm.current_round - 1}-editor.json"
+            pp = _round_doc_path(slug, n, cm.current_round - 1)
             previous = ParsedDoc.model_validate_json(pp.read_text()).model_dump()
 
     sp = bd / "chapters" / f"ch{n:02d}" / f"round-{cm.current_round}-reviewer.json"

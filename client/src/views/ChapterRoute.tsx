@@ -132,7 +132,7 @@ export default function ChapterRoute() {
         await runEditorRound(slug, n, editorModel);
       }
       await runReviewerRound(slug, n, reviewerModel);
-      await runEditorRound(slug, n, editorModel);
+      await runEditorRound(slug, n, editorModel, undefined, true);
       await chapter.refresh();
     } catch (err) {
       appendActivity(`⚠ ${errorMessage(err)}`, "error");

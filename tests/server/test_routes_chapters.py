@@ -231,3 +231,53 @@ def test_make_client_routes_codex_model_ids_to_the_cli(translate_root, monkeypat
     assert isinstance(_make_client("codex/default"), AcpProviderClient)
     # Not in the CLI catalog -> OpenRouter, even though "qwen" names a CLI.
     assert isinstance(_make_client("qwen/qwen3-max"), OpenRouterClient)
+
+
+def test_one_requested_round_is_one_round_number(app_with_book, monkeypatch) -> None:
+    """Editor -> Reviewer -> apply must land on round 1, not inflate to round 2.
+
+    The apply pass writes round-1-editor-revised.* beside the untouched draft.
+    """
+    client, slug = app_with_book
+    fake = AsyncMock()
+    fake.chat = AsyncMock(side_effect=[
+        _EDITOR_MOCK_RESPONSE,                                   # editor draft
+        '[{"quote": "Salut", "comment": "consider Bonjour"}]',   # reviewer
+        _EDITOR_MOCK_RESPONSE,                                   # apply suggestions
+    ])
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake)
+
+    client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
+    client.post(f"/books/{slug}/chapter/1/round/reviewer", json={"model": "rv"})
+    r = client.post(
+        f"/books/{slug}/chapter/1/round/editor",
+        json={"model": "ed", "apply_suggestions": True},
+    )
+    assert r.status_code == 200
+
+    state = client.get(f"/books/{slug}/chapter/1/state").json()
+    assert state["current_round"] == 1, "one requested round must be one round"
+    assert len(state["rounds"]) == 1
+    entry = state["rounds"][0]
+    assert entry["editor_completed_at"] and entry["reviewer_completed_at"]
+    assert entry["revised_completed_at"], "the apply pass completes the round"
+
+    from server.paths import book_dir
+    cdir = book_dir(slug) / "chapters" / "ch01"
+    assert (cdir / "round-1-editor.json").exists()           # draft preserved
+    assert (cdir / "round-1-editor-revised.json").exists()   # revision beside it
+    assert not (cdir / "round-2-editor.json").exists()       # no phantom round
+
+
+def test_apply_without_suggestions_is_rejected(app_with_book, monkeypatch) -> None:
+    client, slug = app_with_book
+    fake = AsyncMock()
+    fake.chat = AsyncMock(return_value=_EDITOR_MOCK_RESPONSE)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake)
+    client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
+    r = client.post(
+        f"/books/{slug}/chapter/1/round/editor",
+        json={"model": "ed", "apply_suggestions": True},
+    )
+    assert r.status_code == 400
+    assert "no reviewer suggestions" in r.json()["detail"]

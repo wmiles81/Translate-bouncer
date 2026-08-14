@@ -94,3 +94,28 @@ def test_post_book_default_on_collision_is_new_session(translate_root: Path, fix
     slug2 = r2.json()["slug"]
     assert slug2 != slug1
     assert slug2.endswith("-2")
+
+
+def test_remove_book_hides_it_but_keeps_every_file(translate_root, fixtures_dir) -> None:
+    """Removal is list-only: the book disappears from /books, nothing is deleted."""
+    client = TestClient(create_app())
+    slug = client.post("/books", json={
+        "translated_path": str(fixtures_dir / "sample-fr-folder"),
+        "english_path": str(fixtures_dir / "sample-en-folder"),
+        "language_pair": {"from": "en", "to": "fr"},
+    }).json()["slug"]
+    assert slug in client.get("/books").json()
+    before = sorted(p.name for p in (translate_root / slug).iterdir())
+
+    r = client.delete(f"/books/{slug}")
+    assert r.status_code == 200
+    assert r.json()["removed"] is True
+
+    assert slug not in client.get("/books").json()          # gone from the list
+    assert (translate_root / slug).exists()                  # but still on disk
+    assert sorted(p.name for p in (translate_root / slug).iterdir()) == before
+    assert client.get(f"/books/{slug}").status_code == 200   # still reachable directly
+
+
+def test_remove_unknown_book_is_404(translate_root) -> None:
+    assert TestClient(create_app()).delete("/books/no-such-book").status_code == 404

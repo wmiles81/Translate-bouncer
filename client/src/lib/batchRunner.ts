@@ -101,7 +101,9 @@ export async function runBatch(opts: BatchRunOptions): Promise<BatchSummary> {
         });
         await runReviewerRound(opts.bookSlug, ch.n, opts.reviewerModel, opts.signal);
         // Apply reviewer suggestions via another editor pass.
-        state = await runEditorRound(opts.bookSlug, ch.n, opts.editorModel, opts.signal);
+        state = await runEditorRound(
+          opts.bookSlug, ch.n, opts.editorModel, opts.signal, true,
+        );
         opts.onProgress({
           type: "round_done",
           chapterN: ch.n,

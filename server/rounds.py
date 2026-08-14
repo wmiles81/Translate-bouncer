@@ -87,8 +87,13 @@ async def run_editor_pass(
     on_retry=None,
     on_token=None,
     on_notice=None,
+    out_suffix: str = "",
 ) -> ParsedDoc:
-    """Run the Editor pass and persist round-N-editor.{docx,json}."""
+    """Run the Editor pass and persist round-N-editor{suffix}.{docx,json,raw.txt}.
+
+    ``out_suffix`` is "-revised" for the in-round pass that applies this round's
+    reviewer suggestions, so the pre-review draft is never overwritten.
+    """
     payload = render_payload(en_doc, target_doc, source_code=source_code, target_code=target_code)
     user_msg = payload
     if prior_reviewer_suggestions:
@@ -106,7 +111,7 @@ async def run_editor_pass(
     cdir = _chapter_dir(slug, chapter_n)
     # Save the raw response immediately so a parse failure leaves something on
     # disk to debug. Removed/overwritten on success below.
-    (cdir / f"round-{round_n}-editor.raw.txt").write_text(raw)
+    (cdir / f"round-{round_n}-editor{out_suffix}.raw.txt").write_text(raw)
 
     try:
         edited = parse_target_lines(
@@ -119,8 +124,8 @@ async def run_editor_pass(
             f"{exc} (raw response saved to round-{round_n}-editor.raw.txt)"
         ) from exc
 
-    write_docx(edited, cdir / f"round-{round_n}-editor.docx")
-    (cdir / f"round-{round_n}-editor.json").write_text(edited.model_dump_json(indent=2))
+    write_docx(edited, cdir / f"round-{round_n}-editor{out_suffix}.docx")
+    (cdir / f"round-{round_n}-editor{out_suffix}.json").write_text(edited.model_dump_json(indent=2))
     return edited
 
 

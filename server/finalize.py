@@ -18,7 +18,11 @@ def finalize_chapter(*, slug: str, chapter_n: int) -> None:
             f"chapter {chapter_n} has no completed Editor round yet"
         )
     cdir = book_dir(slug) / "chapters" / f"ch{chapter_n:02d}"
-    src = cdir / f"round-{cm.current_round}-editor.docx"
+    # A completed round ends with the revised pass; fall back to the round's
+    # draft when only the editor pass ran.
+    src = cdir / f"round-{cm.current_round}-editor-revised.docx"
+    if not src.exists():
+        src = cdir / f"round-{cm.current_round}-editor.docx"
     if not src.exists():
         raise FinalizeError(f"missing {src.name}")
     shutil.copyfile(src, cdir / "final.docx")

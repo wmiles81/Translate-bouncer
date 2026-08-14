@@ -17,3 +17,9 @@ export const ingestBook = (req: IngestRequest) =>
   request<IngestResponse>("/books", { method: "POST", body: req });
 
 export const getBook = (slug: string) => request<BookMeta>(`/books/${slug}`);
+
+/** Remove a book from the list. Files stay on disk under ~/.translate/<slug>/. */
+export const deleteBook = (slug: string) =>
+  request<{ slug: string; removed: boolean; files_kept_at: string }>(`/books/${slug}`, {
+    method: "DELETE",
+  });

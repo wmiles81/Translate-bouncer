@@ -5,7 +5,8 @@ from pydantic import BaseModel
 
 from server.config import load_config
 from server.ingest import ChapterCountMismatch, ingest_book
-from server.state import LanguagePair, list_books, load_book_meta
+from server.paths import book_dir
+from server.state import LanguagePair, list_books, load_book_meta, save_book_meta
 
 router = APIRouter()
 
@@ -24,6 +25,22 @@ class IngestResponse(BaseModel):
 @router.get("/books", response_model=List[str])
 def get_books() -> List[str]:
     return list_books()
+
+
+@router.delete("/books/{slug}")
+def remove_book(slug: str) -> dict:
+    """Remove a book from the app's list. Files are left untouched on disk.
+
+    Nothing is deleted: the book's folder (rounds, finals, sources) stays under
+    ~/.translate/<slug>/, and clearing "hidden" in its meta.json restores it.
+    """
+    try:
+        bm = load_book_meta(slug)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"book not found: {slug}")
+    bm.hidden = True
+    save_book_meta(bm)
+    return {"slug": slug, "removed": True, "files_kept_at": str(book_dir(slug))}
 
 
 def _clean_path(s: str) -> str:

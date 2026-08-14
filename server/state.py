@@ -47,6 +47,9 @@ class BookMeta(BaseModel):
     sources: BookSources
     language_pair: LanguagePair
     chapters: List[ChapterEntry]
+    # Removed from the app's book list. Files stay on disk under
+    # ~/.translate/<slug>/ — clearing this flag brings the book back.
+    hidden: bool = False
 
 
 class Models(BaseModel):
@@ -63,6 +66,9 @@ class RoundEntry(BaseModel):
     n: int
     editor_completed_at: Optional[str] = None
     reviewer_completed_at: Optional[str] = None
+    # The in-round pass that applies this round's reviewer suggestions. A round
+    # is complete once this is set; it does NOT start a new round.
+    revised_completed_at: Optional[str] = None
 
 
 class ChapterMeta(BaseModel):
@@ -101,10 +107,16 @@ def list_books() -> List[str]:
     root = translate_root()
     if not root.exists():
         return []
+    def _visible(d) -> bool:
+        try:
+            return not json.loads((d / "meta.json").read_text()).get("hidden", False)
+        except Exception:  # noqa: BLE001 - unreadable meta: still list it
+            return True
+
     return sorted(
         d.name
         for d in root.iterdir()
-        if d.is_dir() and (d / "meta.json").exists()
+        if d.is_dir() and (d / "meta.json").exists() and _visible(d)
     )
 
 

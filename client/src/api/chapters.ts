@@ -4,10 +4,18 @@ import { request } from "./client";
 export const getChapterState = (slug: string, n: number) =>
   request<ChapterMeta>(`/books/${slug}/chapter/${n}/state`);
 
-export const runEditorRound = (slug: string, n: number, model: string, signal?: AbortSignal) =>
+export const runEditorRound = (
+  slug: string,
+  n: number,
+  model: string,
+  signal?: AbortSignal,
+  // The in-round pass applying this round's reviewer suggestions; it completes
+  // the round instead of opening a new one.
+  applySuggestions = false,
+) =>
   request<ChapterMeta>(`/books/${slug}/chapter/${n}/round/editor`, {
     method: "POST",
-    body: { model },
+    body: { model, apply_suggestions: applySuggestions },
     signal,
   });
 
