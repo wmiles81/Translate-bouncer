@@ -63,3 +63,33 @@ describe("runBatch stop semantics", () => {
     expect(result.completed).toBe(1); // chapter 1 finished; chapter 2 never started
   });
 });
+
+describe("runBatch always drafts first", () => {
+  it("re-drafts even when a stale unreviewed draft exists (Restore must feel restored)", async () => {
+    // The state that used to make the batch skip the editor: a draft from an
+    // earlier run that never got reviewed.
+    const { getChapterState } = await import("../api/chapters");
+    vi.mocked(getChapterState).mockResolvedValue({
+      current_round: 1,
+      rounds: [{ n: 1, editor_completed_at: "2026-08-14T11:03:25Z", reviewer_completed_at: null }],
+    } as never);
+    const calls: string[] = [];
+    vi.mocked(runEditorRound).mockImplementation(async (_s, _n, _m, _sig, apply) => {
+      calls.push(apply ? "editor:apply" : "editor:draft");
+      return {} as never;
+    });
+    vi.mocked(runReviewerRound).mockImplementation(async () => {
+      calls.push("reviewer");
+      return {} as never;
+    });
+
+    await runBatch({
+      ...baseOpts,
+      chapters: [chapters[0]],
+      shouldStop: () => false,
+      onProgress: () => {},
+    });
+
+    expect(calls).toEqual(["editor:draft", "reviewer", "editor:apply"]);
+  });
+});

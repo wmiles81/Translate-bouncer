@@ -71,21 +71,23 @@ A round with all three timestamps is complete. Missing `revised_completed_at` me
 > [!NOTE]
 > This fallback is what keeps books created before the change working: their rounds have only drafts, and every consumer degrades to the draft automatically.
 
-## The leading-editor skip
+## Every round starts with a draft
 
-`needsLeadingEditor()` in `client/src/lib/batchRunner.ts`:
+Both callers — `runBatch` and Continue — run the three passes in order, always:
 
 ```ts
-if (meta.current_round === 0) return true;
-const last = meta.rounds.find((r) => r.n === meta.current_round);
-return !last || last.reviewer_completed_at != null;
+await runEditorRound(slug, n, editorModel, signal);          // draft (new round)
+await runReviewerRound(slug, n, reviewerModel, signal);      // review
+await runEditorRound(slug, n, editorModel, signal, true);    // apply, same round
 ```
 
-Read it as: *"skip the draft if the current round already has an editor pass that nobody has reviewed yet."* It exists so a resumed run doesn't pay for a duplicate draft.
+There is deliberately **no resume**. An earlier version skipped the draft when
+the current round already had an unreviewed editor pass, to avoid redoing work.
+That made "Restore original" look broken: a run that had produced drafts and
+then failed every review left 13 half-rounds, and the next batch silently
+reviewed those stale drafts — opening each chapter's log at the Reviewer step
+with text that could be hours old and from a different model.
 
-> [!WARNING]
-> **This is the source of the most confusing log sequence in the app.** If an earlier run left drafts without reviews (e.g. every reviewer call failed), the next batch starts each chapter at the **Reviewer** step and silently reuses a draft that may be hours old and produced by a different model. Nothing in the activity log says the editor step was skipped. See Known Issues.
-
-## Related
-
-<a href="#" data-goto="quirks:known-issues">→ Known Issues</a>
+The cost of always drafting is one extra editor call when a round was
+interrupted mid-flight. The benefit is that what the log shows is what just
+ran, and a restored book really does start from the original translation.

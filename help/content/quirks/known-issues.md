@@ -4,7 +4,7 @@ Current as of **2026-08-14**, branch `acp-repair`. These are open — the code b
 
 ## Contents
 
-- [Stale drafts are silently reused](#stale-drafts-are-silently-reused)
+- [Stale drafts are silently reused — FIXED](#stale-drafts-are-silently-reused--fixed-2026-08-14)
 - [Every stage logs twice](#every-stage-logs-twice)
 - [The apply pass looks like a draft pass](#the-apply-pass-looks-like-a-draft-pass)
 - [Codex 5.6 models are offered but cannot run](#codex-56-models-are-offered-but-cannot-run)
@@ -12,15 +12,17 @@ Current as of **2026-08-14**, branch `acp-repair`. These are open — the code b
 - [Deep links 404 on reload](#deep-links-404-on-reload)
 - [Smaller notes](#smaller-notes)
 
-## Stale drafts are silently reused
+## Stale drafts are silently reused — FIXED 2026-08-14
 
-**Symptom:** a "full book" batch starts a chapter at the **Reviewer** step, and the log looks like it began mid-round.
+Kept here because the symptom is memorable: a "full book" batch used to start a
+chapter at the **Reviewer** step, reviewing a draft written hours earlier by a
+possibly different model, and nothing in the log said so. It made
+<a href="#" data-goto="concepts:state">Restore original</a> look like it hadn't
+worked — the restore had run correctly, but a later half-failed batch left
+unreviewed drafts that the next run resumed.
 
-**Cause:** `needsLeadingEditor()` skips the draft when the current round has an editor pass with no reviewer — intended as resume-don't-redo. But an earlier run that produced drafts and then failed every review (which is exactly what a broken reviewer model does) leaves 13 chapters in that state.
-
-**Observed:** on 2026-08-14 a batch reviewed drafts written **3.4 hours earlier** for chapters 1–5 and 7–14; only chapter 6, which had no leftover draft, got a fresh edit. Nothing in the log said so, and the drafts may have been produced by a different editor model than the one selected for the run.
-
-**If you fix it:** either log the reuse explicitly ("reusing round 1 draft from 10:38") or re-draft when the leftover predates the run / came from a different model. The rule lives in `client/src/lib/batchRunner.ts:12-16`.
+Every requested round now begins with a fresh editor draft. See
+<a href="#" data-goto="concepts:rounds">Rounds</a>.
 
 ## Every stage logs twice
 

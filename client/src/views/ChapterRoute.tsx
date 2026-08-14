@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { finalizeChapter, runEditorRound, runReviewerRound } from "../api/chapters";
-import type { ChapterMeta } from "../types/api";
 import { ApiError } from "../api/client";
 import BatchControls from "../components/BatchControls";
 import EnglishPane from "../components/EnglishPane";
@@ -115,22 +114,14 @@ export default function ChapterRoute() {
     return err instanceof Error ? err.message : String(err);
   }
 
-  // A "round" is Editor → Reviewer → Editor (apply suggestions). The leading
-  // editor is skipped when the chapter already has an editor pass that hasn't
-  // been reviewed yet, so back-to-back Continues don't redo work.
-  function needsLeadingEditor(meta: ChapterMeta): boolean {
-    if (meta.current_round === 0) return true;
-    const last = meta.rounds.find((r) => r.n === meta.current_round);
-    return !last || last.reviewer_completed_at != null;
-  }
-
+  // A "round" is Editor → Reviewer → Editor (apply suggestions), always in that
+  // order. Continue never resumes a half-finished round from an earlier session:
+  // it drafts from the chapter's current text, so what you see is what just ran.
   const handleContinue = async () => {
     setBusy(true);
     setBusySince(Date.now());
     try {
-      if (needsLeadingEditor(chapter.meta!)) {
-        await runEditorRound(slug, n, editorModel);
-      }
+      await runEditorRound(slug, n, editorModel);
       await runReviewerRound(slug, n, reviewerModel);
       await runEditorRound(slug, n, editorModel, undefined, true);
       await chapter.refresh();
