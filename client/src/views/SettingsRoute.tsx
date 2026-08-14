@@ -29,13 +29,15 @@ export default function SettingsRoute() {
   const h = headingStyle ?? settings.ingestion.heading_style;
   const p = patternsText ?? settings.ingestion.fallback_patterns.join("\n");
 
-  const handleSave = async () => {
+  // Persist the current form state, with optional just-changed overrides (React
+  // state updates haven't landed yet when a change handler calls this).
+  const saveAll = async (over: { editor?: string; reviewer?: string; key?: string } = {}) => {
     setSaveError(null);
     setSaved(false);
     try {
       await save({
-        openrouter_api_key: k,
-        default_models: { editor: e, reviewer: r },
+        openrouter_api_key: over.key ?? k,
+        default_models: { editor: over.editor ?? e, reviewer: over.reviewer ?? r },
         ingestion: {
           heading_style: h,
           fallback_patterns: p.split("\n").map((s) => s.trim()).filter(Boolean),
@@ -46,6 +48,8 @@ export default function SettingsRoute() {
       setSaveError(err instanceof Error ? err.message : String(err));
     }
   };
+
+  const handleSave = () => saveAll();
 
   // Refresh the model list and re-detect installed provider CLIs. Fetch errors land in
   // the hooks' own error state (modelsError); the busy state is the hooks' loading flags.
@@ -113,6 +117,13 @@ export default function SettingsRoute() {
             type="password"
             value={k}
             onChange={(ev) => setApiKey(ev.target.value)}
+            onBlur={async () => {
+              // Persist on blur, then refresh so the OpenRouter models appear at once.
+              if (apiKey !== null && apiKey !== settings.openrouter_api_key) {
+                await saveAll({ key: apiKey });
+                handleRefreshModels();
+              }
+            }}
             placeholder="sk-or-..."
             autoComplete="off"
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-sm"
@@ -121,14 +132,25 @@ export default function SettingsRoute() {
         <p className="text-sm text-gray-600">
           Optional. With a key set, the model list includes every OpenRouter model and any
           non-CLI model id (e.g. from your saved defaults) routes through OpenRouter.
-          Save after changing, then refresh the model list.
+          The key saves when you click away from the field.
         </p>
       </section>
 
       <section className="mb-6 space-y-3">
         <h2 className="text-sm font-semibold uppercase text-gray-500">Default models</h2>
-        <ModelPicker label="Editor" value={e} models={models} onChange={setEditorDefault} />
-        <ModelPicker label="Reviewer" value={r} models={models} onChange={setReviewerDefault} />
+        {/* Selections persist immediately — no separate Save click needed. */}
+        <ModelPicker
+          label="Editor"
+          value={e}
+          models={models}
+          onChange={(id) => { setEditorDefault(id); void saveAll({ editor: id }); }}
+        />
+        <ModelPicker
+          label="Reviewer"
+          value={r}
+          models={models}
+          onChange={(id) => { setReviewerDefault(id); void saveAll({ reviewer: id }); }}
+        />
       </section>
 
       <section className="mb-6 space-y-3">
