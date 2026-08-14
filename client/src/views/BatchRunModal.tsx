@@ -31,6 +31,14 @@ export default function BatchRunModal({ book, onClose, onCompleted }: Props) {
   const [skipDone, setSkipDone] = useState(true);
   const [editorModel, setEditorModel] = useState(settings?.default_models.editor ?? "");
   const [reviewerModel, setReviewerModel] = useState(settings?.default_models.reviewer ?? "");
+
+  // The pickers are per-run OVERRIDES of the Settings defaults. Settings load
+  // async, so backfill once they arrive (unless the user already chose).
+  useEffect(() => {
+    if (!settings) return;
+    setEditorModel((m) => m || settings.default_models.editor);
+    setReviewerModel((m) => m || settings.default_models.reviewer);
+  }, [settings]);
   const [rounds, setRounds] = useState(2);
   const [finalize, setFinalize] = useState(false);
 
@@ -180,7 +188,8 @@ export default function BatchRunModal({ book, onClose, onCompleted }: Props) {
               </label>
             </div>
 
-            <div className="flex items-center gap-4">
+            {/* One picker per row: provider select + model dropdown don't fit two-up. */}
+            <div className="flex flex-col gap-2">
               <ModelPicker
                 label="Editor"
                 value={editorModel}
