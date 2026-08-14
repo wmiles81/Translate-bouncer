@@ -1,6 +1,6 @@
 [project]
 name = "translate"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local web app for AI-assisted bilingual chapter proofreading"
 requires-python = ">=3.11"
 dependencies = [
