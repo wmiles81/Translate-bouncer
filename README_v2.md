@@ -9,7 +9,7 @@ want it to. When you're happy, click **Done** and Translate writes a final
 
 Everything runs on your own computer. Translate doesn't call out to a metered
 API — it drives the **AI command-line tools** you're already signed into with
-an existing subscription (Claude Code for Claude Max, Codex for ChatGPT Plus,
+an existing subscription (Claude Code for Claude Max, Codex for ChatGPT Plus/Pro,
 the Gemini CLI for Gemini AI Pro, or Qwen Code for a free Qwen account). Your
 manuscripts never leave your machine except as the prompt sent to whichever
 locally-running CLI you selected as Editor or Reviewer.
@@ -104,7 +104,7 @@ You need three things on your computer:
    | If you have… | Run this once |
    |---|---|
    | Claude Max | `claude` |
-   | ChatGPT Plus | `codex` |
+   | ChatGPT Plus/Pro | `codex` |
    | Gemini AI Pro | `gemini` |
    | (free) Qwen | `qwen` |
 
@@ -637,7 +637,7 @@ OpenRouter's status page, before clicking Continue again.
 **"agent requires sign-in" / usage-limit message** — you're signed out of
 that provider's CLI, or you've hit your plan's usage cap. Run the CLI by
 name (e.g. `claude`, `codex`, `gemini`, `qwen`) to re-authenticate, or wait
-for the cap to reset (Codex/ChatGPT Plus has a daily cap; see
+for the cap to reset (Codex/ChatGPT Plus/Pro has a daily cap; see
 `USING_YOUR_SUBSCRIPTIONS_INSTEAD_OF_OPENROUTER_v3.md`). This error is
 never retried automatically, since retrying can't fix a sign-in problem.
 The equivalent OpenRouter failure is **"OpenRouter rejected the API key"**

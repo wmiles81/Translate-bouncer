@@ -10,13 +10,13 @@
 
 **Translate** polishes AI-translated manuscripts chapter by chapter, running each through repeated **Editor → Reviewer → Editor** rounds. Out of the box the upstream app sends every round through **OpenRouter**, which bills per word — a full novel typically runs **$30–$50**.
 
-This build instead talks to the **AI command-line tools** you've already signed into with your existing subscription (**Claude Max, ChatGPT Plus, Gemini AI Pro**, or a free Qwen account). Each round is covered by the subscription you already pay for, so a whole book costs **$0 extra**.
+This build instead talks to the **AI command-line tools** you've already signed into with your existing subscription (**Claude Max, ChatGPT Plus/Pro, Gemini AI Pro**, or a free Qwen account). Each round is covered by the subscription you already pay for, so a whole book costs **$0 extra**.
 
 ---
 
 ## Read this first: Terms of Service
 
-Driving a consumer subscription (Claude Max / ChatGPT Plus / Gemini AI Pro) through its CLI as an **automated, headless backend** for batch work is *not* the interactive, personal use those plans are sold for. All three providers' consumer terms lean against repurposing subscription access this way.
+Driving a consumer subscription (Claude Max / ChatGPT Plus/Pro / Gemini AI Pro) through its CLI as an **automated, headless backend** for batch work is *not* the interactive, personal use those plans are sold for. All three providers' consumer terms lean against repurposing subscription access this way.
 
 **The realistic downside is not a surprise bill — it's account suspension.** Use your own subscriptions, on your own books, at a human pace, and understand that you're accepting that risk. If you can't afford to have an account paused, stay on OpenRouter (it's metered but sanctioned). This is your call to make with eyes open.
 
@@ -32,7 +32,7 @@ Driving a consumer subscription (Claude Max / ChatGPT Plus / Gemini AI Pro) thro
 
 ## What you need
 
-- At least **one** of: Claude Max, ChatGPT Plus, Gemini AI Pro (or a free Qwen account) — **and/or** an OpenRouter API key.
+- At least **one** of: Claude Max, ChatGPT Plus/Pro, Gemini AI Pro (or a free Qwen account) — **and/or** an OpenRouter API key.
 - A working copy of Translate.
 - About **15 minutes**, one time.
 - Comfort pasting one or two lines into a terminal.
@@ -67,7 +67,7 @@ For each provider you have, run its base CLI once, sign in through the browser t
 | If you have… | Run this once |
 |---|---|
 | Claude Max | `claude` |
-| ChatGPT Plus | `codex` |
+| ChatGPT Plus/Pro | `codex` |
 | Gemini AI Pro | `gemini` |
 | (free) Qwen | `qwen` |
 
@@ -87,7 +87,7 @@ Save, add a book, and run rounds. The activity log shows the model's text stream
 - **Subscription CLI models show as "free"; OpenRouter models show real pricing.** A `claude-code/default`, `codex/default`, `gemini/default`, or `qwen/default` round is covered by your subscription — $0. Any other model id (once you've set an OpenRouter key) bills your OpenRouter account at that model's listed rate, same as the original app.
 - **The CLI model list is one entry per provider, not a named-model menu.** Because the Claude Code and Codex ACP adapters don't expose a list of models to pick from, Translate offers exactly one honest choice per detected CLI: "\<Provider\> — CLI default model." If you want to pick Opus vs. Sonnet, or Gemini Pro vs. Flash, by name, that comes from OpenRouter's catalog once you've set a key in Settings — not from the CLI entries.
 - **CLI rounds stream in small batches; OpenRouter rounds arrive all at once.** A live preview pane under the activity log shows the model's output during each round. For a subscription-CLI round it arrives in visible ~300-character jumps rather than a smooth per-token trickle — that's deliberate coalescing to keep the UI responsive, not lag. For an OpenRouter round there's no token-by-token stream from the API at all, so the pane stays empty and then fills with the entire reply at once when it arrives — that's expected, not a stall. Either way, the pane only ever shows the chapter you're currently viewing; if you switch to another chapter or a batch run is working on one you're not looking at, that chapter's output isn't shown there (the activity log below it still logs every chapter).
-- **Codex (ChatGPT Plus) has a daily cap.** Big overnight batches can hit it; Codex calls then fail until the cap resets (a few hours). Claude Max and Gemini AI Pro are more generous, so this only bites if Codex is your only subscription. (OpenRouter rounds aren't subject to this — they're billed, not capped.)
+- **Codex (ChatGPT Plus/Pro) has a daily cap.** Big overnight batches can hit it; Codex calls then fail until the cap resets (a few hours). Claude Max and Gemini AI Pro are more generous, so this only bites if Codex is your only subscription. (OpenRouter rounds aren't subject to this — they're billed, not capped.)
 - **Mix and match.** Editor = a subscription CLI, Reviewer = a specific OpenRouter model is a strong pairing if you want a genuinely different "opinion" from a named model. Whatever you set in Settings is the default; override per-chapter from the chapter page.
 - **No tools, no file access.** Translate tells each CLI agent it may only return text — it cannot read or write files on your machine during a round. (This restriction is specific to the ACP/CLI path; OpenRouter calls are plain chat completions and never had file access to begin with.)
 - **Hand-typing a named CLI-looking model (e.g. `claude-code/opus`) does not run on that CLI.** The catalog only ever offers `<provider>/default`, and that's not a UI limit — routing itself now requires an **exact** match to `<cli>/default` (or a bare provider name). Anything else, including a model id that merely starts with a CLI's name, routes through OpenRouter instead: `claude-code/opus` is looked up as an OpenRouter model (and fails there with "Model not available" unless OpenRouter genuinely serves an id by that name), and it needs an OpenRouter key regardless. There's no supported way to hand-pick a named model on a subscription CLI today.

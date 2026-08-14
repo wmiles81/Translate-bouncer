@@ -59,7 +59,7 @@ PROVIDER_LAUNCH: dict[str, tuple[str, list[str]]] = {
 
 _PROVIDER_NAMES = {
     "claude-code": "Claude Code (Claude Max)",
-    "codex": "Codex (ChatGPT Plus)",
+    "codex": "Codex (ChatGPT Plus/Pro)",
     "gemini": "Gemini CLI (Gemini AI Pro)",
     "qwen": "Qwen Code",
 }

@@ -5,7 +5,7 @@ import ModelPicker from "./ModelPicker";
 
 const providerList = [
   { id: "claude-code", name: "Claude Code (Claude Max)", detected: true },
-  { id: "codex", name: "Codex (ChatGPT Plus)", detected: true },
+  { id: "codex", name: "Codex (ChatGPT Plus/Pro)", detected: true },
   { id: "gemini", name: "Gemini CLI (Gemini AI Pro)", detected: true },
   { id: "qwen", name: "Qwen Code", detected: false },
 ];
@@ -67,7 +67,7 @@ describe("ModelPicker (route selector + ModelRouter dropdown)", () => {
     await waitFor(() =>
       expect(within(sel).getByText(/Claude Code \(Claude Max\)/)).toBeInTheDocument()
     );
-    expect(within(sel).getByText(/Codex \(ChatGPT Plus\)/)).toBeInTheDocument();
+    expect(within(sel).getByText(/Codex \(ChatGPT Plus\/Pro\)/)).toBeInTheDocument();
     expect(within(sel).getByText(/Gemini CLI \(Gemini AI Pro\)/)).toBeInTheDocument();
     const qwen = within(sel).getByText(/Qwen Code — not found/) as HTMLOptionElement;
     expect(qwen.disabled).toBe(true); // undetected CLIs can't be picked
