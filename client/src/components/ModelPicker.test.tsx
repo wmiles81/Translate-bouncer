@@ -96,6 +96,22 @@ describe("ModelPicker (ModelRouter-style dropdown)", () => {
     expect(names[0]).toContain("Claude Sonnet 4"); // descending: 200k first
   });
 
+  it("provider selector in front scopes the model list", async () => {
+    render(<ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />);
+    await userEvent.selectOptions(screen.getByLabelText("Editor provider"), "openai");
+    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    expect(options).toHaveLength(1);
+    expect(options[0]).toHaveTextContent("GPT-5");
+  });
+
+  it("provider selector follows the current value's provider", () => {
+    render(
+      <ModelPicker label="Editor" value="anthropic/claude-sonnet-4" models={sample} onChange={() => {}} />
+    );
+    expect(screen.getByLabelText("Editor provider")).toHaveValue("anthropic");
+  });
+
   it("closes on Escape", async () => {
     render(<ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "Editor" }));

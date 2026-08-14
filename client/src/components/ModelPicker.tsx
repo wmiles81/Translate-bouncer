@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   BG,
   COLUMNS,
@@ -29,12 +29,29 @@ interface Props {
 
 export default function ModelPicker({ label, value, models, onChange }: Props) {
   const [open, setOpen] = useState(false);
+  // Provider selector in front of the model dropdown: "" = all providers.
+  const [prov, setProv] = useState<string>(() => (value.includes("/") ? value.split("/")[0] : ""));
   const [tier, setTier] = useState<string>("All");
   const [sortLabel, setSortLabel] = useState<string>("Provider");
   // Header-click sort overrides the dropdown until the dropdown changes again.
   const [colSort, setColSort] = useState<{ col: ColKey; asc: boolean } | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  // Panels right-anchor to the trigger; near the viewport's left edge that
+  // would clip, so flip to left-anchoring when it does.
+  const [alignLeft, setAlignLeft] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !panelRef.current) return;
+    setAlignLeft(panelRef.current.getBoundingClientRect().left < 8);
+  }, [open]);
+
+  // Follow the provider of an externally-changed value (e.g. settings finishing
+  // their load, or a batch restoring a saved model).
+  useEffect(() => {
+    setProv(value.includes("/") ? value.split("/")[0] : "");
+  }, [value]);
 
   useEffect(() => {
     if (!open) return;
@@ -54,9 +71,15 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
 
   const rows = useMemo(() => models.map(toRow), [models]);
 
+  const providers = useMemo(() => {
+    const s = new Set<string>(rows.map((r) => r.provider));
+    if (prov) s.add(prov); // keep a saved value's provider listed even if absent
+    return Array.from(s).sort();
+  }, [rows, prov]);
+
   const shown = useMemo(() => {
     const keep = TIERS[tier] ?? TIERS["All"];
-    let out = rows.filter(keep);
+    let out = rows.filter((r) => (prov === "" || r.provider === prov) && keep(r));
     if (colSort) {
       const col = COLUMNS.find((c) => c.key === colSort.col)!;
       out = out.slice().sort((a, b) => {
@@ -71,7 +94,7 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
       out = out.slice().sort((a, b) => compareTuples(key(a), key(b)));
     }
     return out;
-  }, [rows, tier, sortLabel, colSort]);
+  }, [rows, prov, tier, sortLabel, colSort]);
 
   const headerClick = (col: ColKey) => {
     setColSort((prev) => ({ col, asc: prev?.col === col ? !prev.asc : true }));
@@ -84,6 +107,17 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
   return (
     <div ref={ref} className="relative flex items-center gap-2 text-sm">
       <span className="text-gray-600">{label}</span>
+      <select
+        aria-label={`${label} provider`}
+        value={prov}
+        onChange={(e) => setProv(e.target.value)}
+        className="max-w-[9rem] rounded border border-gray-300 bg-white px-1.5 py-1 text-sm"
+      >
+        <option value="">All providers</option>
+        {providers.map((p) => (
+          <option key={p} value={p}>{p}</option>
+        ))}
+      </select>
       <button
         type="button"
         aria-label={label}
@@ -97,7 +131,10 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
       </button>
       {open && (
         <div
-          className="absolute right-0 top-full z-50 mt-1 flex w-[44rem] max-w-[90vw] flex-col rounded border border-gray-300 shadow-lg"
+          ref={panelRef}
+          className={`absolute top-full z-50 mt-1 flex w-[44rem] max-w-[90vw] flex-col rounded border border-gray-300 shadow-lg ${
+            alignLeft ? "left-0" : "right-0"
+          }`}
           style={{ backgroundColor: BG }}
         >
           <div className="flex items-center gap-1 px-3 pb-2 pt-2.5">
@@ -148,7 +185,7 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
               <tbody role="listbox" aria-label={`${label} models`}>
                 {shown.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-2 py-2 text-xs text-gray-500">No models loaded</td>
+                    <td colSpan={4} className="px-2 py-2 text-xs text-gray-500">No models match</td>
                   </tr>
                 )}
                 {shown.map((r) => (
