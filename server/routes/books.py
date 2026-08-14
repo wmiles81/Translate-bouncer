@@ -27,6 +27,57 @@ def get_books() -> List[str]:
     return list_books()
 
 
+@router.post("/books/{slug}/restore")
+def restore_book(slug: str) -> dict:
+    """Restore a book to its freshly-ingested state: every chapter back to the
+    original translation, round 0, untouched.
+
+    The edits are archived, not deleted. Each chapter's round files and final.docx
+    move into chapters/chNN/archive-<n>/ (lower n = older), so a restore is always
+    recoverable — and the ingested sources were never touched to begin with.
+    """
+    from server.state import (
+        ChapterStatus,
+        Models,
+        PromptsUsed,
+        load_chapter_meta,
+        save_chapter_meta,
+    )
+
+    try:
+        bm = load_book_meta(slug)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"book not found: {slug}")
+
+    archived = 0
+    for entry in bm.chapters:
+        cdir = book_dir(slug) / "chapters" / f"ch{entry.n:02d}"
+        if cdir.exists():
+            edits = sorted(
+                p for p in cdir.iterdir()
+                if p.is_file() and (p.name.startswith("round-") or p.name == "final.docx")
+            )
+            if edits:
+                n = 1
+                while (cdir / f"archive-{n}").exists():
+                    n += 1
+                dest = cdir / f"archive-{n}"
+                dest.mkdir()
+                for p in edits:
+                    p.rename(dest / p.name)
+                archived += len(edits)
+        cm = load_chapter_meta(slug, n=entry.n)
+        cm.current_round = 0
+        cm.status = ChapterStatus.UNTOUCHED
+        cm.rounds = []
+        cm.models = Models()
+        cm.prompts_used = PromptsUsed()
+        save_chapter_meta(slug, cm)
+        entry.status = ChapterStatus.UNTOUCHED
+    save_book_meta(bm)
+    return {"slug": slug, "restored": True, "files_archived": archived}
+
+
 @router.delete("/books/{slug}")
 def remove_book(slug: str) -> dict:
     """Remove a book from the app's list. Files are left untouched on disk.

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { deleteBook, ingestBook } from "../api/books";
+import { deleteBook, ingestBook, restoreBook } from "../api/books";
 import { useBooks } from "../hooks/useBooks";
 import NewBookModal from "./NewBookModal";
 
@@ -46,6 +46,32 @@ export default function BookListRoute() {
             <Link to={`/book/${slug}`} className="flex-1 px-4 py-2 font-mono text-sm">
               {slug}
             </Link>
+            <button
+              type="button"
+              aria-label={`Restore ${slug} to original`}
+              onClick={async () => {
+                // Edits are archived under each chapter, never deleted.
+                if (!window.confirm(
+                  `Restore "${slug}" to the original translation?\n\nEvery chapter ` +
+                  `goes back to round 0. Existing rounds and finals are archived ` +
+                  `(chapters/chNN/archive-N/), not deleted.`
+                )) return;
+                setRemoveError(null);
+                try {
+                  const out = await restoreBook(slug);
+                  refresh();
+                  window.alert(
+                    `"${slug}" restored to the original translation.\n\n` +
+                    `${out.files_archived} file(s) archived under chapters/chNN/archive-N/.`
+                  );
+                } catch (err) {
+                  setRemoveError(err instanceof Error ? err.message : String(err));
+                }
+              }}
+              className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-white"
+            >
+              Restore original
+            </button>
             <button
               type="button"
               aria-label={`Remove ${slug}`}
