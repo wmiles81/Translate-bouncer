@@ -213,6 +213,31 @@ def _subprocess_env() -> dict[str, str]:
     return env
 
 
+# How to sign in to each provider CLI, for the message a blocked round shows.
+_SIGNIN_HINT = {
+    "claude-code": "run `claude` once and sign in",
+    "codex": "run `codex login`",
+    "gemini": "run `gemini` once and pick a sign-in method (or set GEMINI_API_KEY)",
+    "qwen": "run `qwen` once and sign in",
+}
+
+
+def _with_provider_context(provider: str, exc: Exception) -> Exception:
+    """Name the provider (and how to fix it) on a blocked-round error.
+
+    Detection only proves the binary exists — a CLI can be installed but signed
+    out, and the raw agent error is often just "Authentication required".
+    """
+    if not isinstance(exc, ConfigurationError):
+        return exc
+    name = _PROVIDER_NAMES.get(provider, provider)
+    hint = _SIGNIN_HINT.get(provider)
+    msg = f"{name}: {exc}"
+    if hint and "not found" not in str(exc).lower():
+        msg += f" — {hint}, then try again."
+    return ConfigurationError(msg)
+
+
 def _classify(exc: Exception) -> Exception:
     """Map a raw ACP/transport error to a TransientError or ConfigurationError."""
     if isinstance(exc, FileNotFoundError):
@@ -406,7 +431,7 @@ class AcpConnectionManager:
                 raise TransientError(
                     f"{provider} agent did not respond within {SPAWN_TIMEOUT:.0f}s of launch"
                 ) from exc
-            raise _classify(exc) from exc
+            raise _with_provider_context(provider, _classify(exc)) from exc
         return _Conn(
             connection=connection, proc=proc, client=client,
             lock=asyncio.Lock(), stack=stack,
@@ -497,7 +522,7 @@ class AcpConnectionManager:
                 await self._discard(key, conn)
                 raise TransientError(f"agent timed out after {PROMPT_TIMEOUT:.0f}s") from exc
             except Exception as exc:  # noqa: BLE001
-                raise _classify(exc) from exc
+                raise _with_provider_context(provider, _classify(exc)) from exc
             else:
                 try:
                     await asyncio.wait_for(

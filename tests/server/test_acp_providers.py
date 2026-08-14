@@ -478,3 +478,24 @@ async def test_codex_models_get_their_own_spawn_pinned_connection(monkeypatch) -
     assert notices == []
     assert {"codex::gpt-5.5", "codex::gpt-5.4"} <= set(mgr._conns)
     await mgr.aclose()
+
+
+def test_configuration_errors_name_the_provider_and_how_to_fix_it() -> None:
+    """Detection only proves the binary exists — a signed-out CLI must say which
+    provider is blocked and how to sign in, not just 'Authentication required'."""
+    from server.acp_providers import _with_provider_context
+
+    out = _with_provider_context("gemini", ConfigurationError("Authentication required"))
+    assert isinstance(out, ConfigurationError)
+    assert "Gemini CLI" in str(out)
+    assert "gemini" in str(out) and "sign-in" in str(out).lower()
+
+    # A missing executable already says what to install: no sign-in hint piled on.
+    missing = _with_provider_context(
+        "codex", ConfigurationError("executable not found: npx — install the provider CLI")
+    )
+    assert "login" not in str(missing)
+
+    # Transient errors pass through untouched (they retry; no user action implied).
+    t = TransientError("connection reset")
+    assert _with_provider_context("gemini", t) is t
