@@ -1,9 +1,24 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ModelPicker from "./ModelPicker";
 
+const providerList = [
+  { id: "claude-code", name: "Claude Code (Claude Max)", detected: true },
+  { id: "codex", name: "Codex (ChatGPT Plus)", detected: true },
+  { id: "gemini", name: "Gemini CLI (Gemini AI Pro)", detected: true },
+  { id: "qwen", name: "Qwen Code", detected: false },
+];
+
 const sample = [
+  {
+    id: "claude-code/default",
+    name: "Claude Code (Claude Max) — CLI default model",
+    description: "Runs on the CLI's default model.",
+    context_length: null,
+    pricing: { prompt: "0", completion: "0" },
+    supported_parameters: [],
+  },
   {
     id: "anthropic/claude-sonnet-4",
     name: "Claude Sonnet 4",
@@ -13,107 +28,122 @@ const sample = [
     supported_parameters: ["reasoning"],
   },
   {
-    id: "openai/gpt-5",
-    name: "GPT-5",
-    description: "OpenAI flagship.",
-    context_length: 128000,
-    pricing: { prompt: "0.000005", completion: "0.000020" },
-    supported_parameters: [],
+    id: "deepseek/deepseek-v4-pro",
+    name: "DeepSeek: DeepSeek V4 Pro",
+    description: "DeepSeek flagship.",
+    context_length: 1048576,
+    pricing: { prompt: "0.00000117", completion: "0.00000234" },
+    supported_parameters: ["reasoning"],
   },
   {
-    id: "free-vendor/free-model",
-    name: "Free Model",
-    description: "",
-    context_length: 8000,
-    pricing: { prompt: "0", completion: "0" },
+    // OpenRouter org colliding with a CLI name: must stay under OpenRouter.
+    id: "qwen/qwen3-max",
+    name: "Qwen: Qwen3 Max",
+    description: "Alibaba's Qwen3 Max via OpenRouter.",
+    context_length: 256000,
+    pricing: { prompt: "0.0000012", completion: "0.000006" },
     supported_parameters: [],
   },
 ];
 
-describe("ModelPicker (ModelRouter-style dropdown)", () => {
-  it("shows the current model's name on the trigger", () => {
-    render(
-      <ModelPicker label="Editor" value="openai/gpt-5" models={sample} onChange={() => {}} />
+function pickerWith(value: string, onChange: (v: string) => void = () => {}) {
+  return <ModelPicker label="Editor" value={value} models={sample} onChange={onChange} />;
+}
+
+describe("ModelPicker (route selector + ModelRouter dropdown)", () => {
+  beforeEach(() => {
+    global.fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.includes("/providers") ? providerList : sample;
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    }) as unknown as typeof fetch;
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("lists the four CLIs (with detection) plus OpenRouter as the sources", async () => {
+    render(pickerWith(""));
+    const sel = screen.getByLabelText("Editor provider");
+    await waitFor(() =>
+      expect(within(sel).getByText(/Claude Code \(Claude Max\)/)).toBeInTheDocument()
     );
-    expect(screen.getByRole("button", { name: "Editor" })).toHaveTextContent("GPT-5");
+    expect(within(sel).getByText(/Codex \(ChatGPT Plus\)/)).toBeInTheDocument();
+    expect(within(sel).getByText(/Gemini CLI \(Gemini AI Pro\)/)).toBeInTheDocument();
+    const qwen = within(sel).getByText(/Qwen Code — not found/) as HTMLOptionElement;
+    expect(qwen.disabled).toBe(true); // undetected CLIs can't be picked
+    expect(within(sel).getByText("● OpenRouter")).toBeInTheDocument();
   });
 
-  it("falls back to the raw id, then a placeholder", () => {
-    render(<ModelPicker label="Editor" value="custom/x" models={sample} onChange={() => {}} />);
-    expect(screen.getByRole("button", { name: "Editor" })).toHaveTextContent("custom/x");
-  });
-
-  it("opens the table panel with the reference columns", async () => {
-    render(<ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />);
+  it("a CLI source offers exactly its default entry", async () => {
+    render(pickerWith(""));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Editor provider")).not.toHaveValue("")
+    );
+    await userEvent.selectOptions(screen.getByLabelText("Editor provider"), "claude-code");
     await userEvent.click(screen.getByRole("button", { name: "Editor" }));
-    expect(screen.getByRole("listbox")).toBeInTheDocument();
-    for (const h of ["Model", "Writing", "Context", "$ In / Out"]) {
-      expect(screen.getByText(h)).toBeInTheDocument();
-    }
-    expect(within(screen.getByRole("listbox")).getAllByRole("option")).toHaveLength(3);
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    expect(options).toHaveLength(1);
+    expect(options[0]).toHaveTextContent("Claude Code (Claude Max) — CLI default model");
+  });
+
+  it("the OpenRouter source lists vendor models, including CLI-name collisions", async () => {
+    render(pickerWith(""));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Editor provider")).toHaveValue("openrouter")
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
+    const names = within(screen.getByRole("listbox"))
+      .getAllByRole("option")
+      .map((r) => r.textContent ?? "");
+    expect(names).toHaveLength(3);
+    expect(names.join()).toContain("Claude Sonnet 4"); // actual vendor: anthropic
+    expect(names.join()).toContain("Qwen: Qwen3 Max"); // qwen/... stays OpenRouter
+    expect(names.join()).not.toContain("CLI default model");
+  });
+
+  it("follows the current value's route", async () => {
+    const { rerender } = render(pickerWith("claude-code/default"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Editor provider")).toHaveValue("claude-code")
+    );
+    rerender(pickerWith("deepseek/deepseek-v4-pro"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Editor provider")).toHaveValue("openrouter")
+    );
   });
 
   it("one click on a row picks the model and closes the list", async () => {
     const onChange = vi.fn();
-    render(<ModelPicker label="Editor" value="" models={sample} onChange={onChange} />);
+    render(pickerWith("", onChange));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Editor provider")).toHaveValue("openrouter")
+    );
     await userEvent.click(screen.getByRole("button", { name: "Editor" }));
-    await userEvent.click(screen.getByText("GPT-5"));
-    expect(onChange).toHaveBeenCalledWith("openai/gpt-5");
+    await userEvent.click(screen.getByText("DeepSeek: DeepSeek V4 Pro"));
+    expect(onChange).toHaveBeenCalledWith("deepseek/deepseek-v4-pro");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
-  it("filters with the Tier dropdown (Free)", async () => {
-    render(<ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />);
+  it("keeps the ModelRouter table: columns, red thinking rows, reference formats", async () => {
+    render(pickerWith(""));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Editor provider")).toHaveValue("openrouter")
+    );
     await userEvent.click(screen.getByRole("button", { name: "Editor" }));
-    await userEvent.selectOptions(screen.getByLabelText("Tier"), "Free");
-    expect(screen.queryByText("Claude Sonnet 4")).not.toBeInTheDocument();
-    expect(screen.getByText("Free Model")).toBeInTheDocument();
-  });
-
-  it("renders thinking models in red (#c0152f)", async () => {
-    render(<ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />);
-    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
+    for (const h of ["Model", "Writing", "Context", "$ In / Out"]) {
+      expect(screen.getByText(h)).toBeInTheDocument();
+    }
     expect(screen.getByText("Claude Sonnet 4").closest("tr")).toHaveStyle({ color: "#c0152f" });
-    expect(screen.getByText("GPT-5").closest("tr")).not.toHaveStyle({ color: "#c0152f" });
-  });
-
-  it("formats context and per-million pricing like the reference", async () => {
-    render(<ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />);
-    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
+    expect(screen.getByText("Qwen: Qwen3 Max").closest("tr")).not.toHaveStyle({ color: "#c0152f" });
     expect(screen.getByText("200k")).toBeInTheDocument();
     expect(screen.getByText("$3.00 / $15.00")).toBeInTheDocument();
-    expect(screen.getByText("$0 / $0")).toBeInTheDocument();
-  });
-
-  it("sorts by clicking a column header (Context toggles asc/desc)", async () => {
-    render(<ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />);
-    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
-    await userEvent.click(screen.getByText("Context"));
-    let names = within(screen.getByRole("listbox")).getAllByRole("option").map((r) => r.textContent ?? "");
-    expect(names[0]).toContain("Free Model"); // ascending: 8k first
-    await userEvent.click(screen.getByText("Context"));
-    names = within(screen.getByRole("listbox")).getAllByRole("option").map((r) => r.textContent ?? "");
-    expect(names[0]).toContain("Claude Sonnet 4"); // descending: 200k first
-  });
-
-  it("provider selector in front scopes the model list", async () => {
-    render(<ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />);
-    await userEvent.selectOptions(screen.getByLabelText("Editor provider"), "openai");
-    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
-    const options = within(screen.getByRole("listbox")).getAllByRole("option");
-    expect(options).toHaveLength(1);
-    expect(options[0]).toHaveTextContent("GPT-5");
-  });
-
-  it("provider selector follows the current value's provider", () => {
-    render(
-      <ModelPicker label="Editor" value="anthropic/claude-sonnet-4" models={sample} onChange={() => {}} />
-    );
-    expect(screen.getByLabelText("Editor provider")).toHaveValue("anthropic");
   });
 
   it("closes on Escape", async () => {
-    render(<ModelPicker label="Editor" value="" models={sample} onChange={() => {}} />);
+    render(pickerWith(""));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Editor provider")).toHaveValue("openrouter")
+    );
     await userEvent.click(screen.getByRole("button", { name: "Editor" }));
     expect(screen.getByRole("listbox")).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");

@@ -11,7 +11,9 @@ import {
   formatWriting,
   toRow,
   type ColKey,
+  type Row,
 } from "../lib/modelTable";
+import { useProviders } from "../hooks/useProviders";
 import type { Model } from "../types/api";
 
 // A dropdown list. The trigger shows the current model; the panel that opens
@@ -19,6 +21,13 @@ import type { Model } from "../types/api";
 // (openrouter-show): Tier + Sort dropdowns, a sortable four-column table
 // (Model | Writing | Context | $ In / Out) with thinking models in red, and a
 // description strip. One click on a row picks it and closes the list.
+//
+// The provider selector in front lists the ROUTES a round can take — the four
+// subscription CLIs (with live detection state) plus OpenRouter — not model-id
+// prefixes. A CLI provider offers its single "<cli>/default" entry; OpenRouter
+// offers the full catalog, whose rows carry the actual vendor.
+
+const OPENROUTER = "openrouter";
 
 interface Props {
   label: string;
@@ -28,9 +37,10 @@ interface Props {
 }
 
 export default function ModelPicker({ label, value, models, onChange }: Props) {
+  const { providers: cliProviders } = useProviders();
   const [open, setOpen] = useState(false);
-  // Provider selector in front of the model dropdown: "" = all providers.
-  const [prov, setProv] = useState<string>(() => (value.includes("/") ? value.split("/")[0] : ""));
+  // Route selector in front of the model dropdown; "" until data arrives.
+  const [prov, setProv] = useState<string>("");
   const [tier, setTier] = useState<string>("All");
   const [sortLabel, setSortLabel] = useState<string>("Provider");
   // Header-click sort overrides the dropdown until the dropdown changes again.
@@ -47,11 +57,30 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
     setAlignLeft(panelRef.current.getBoundingClientRect().left < 8);
   }, [open]);
 
-  // Follow the provider of an externally-changed value (e.g. settings finishing
-  // their load, or a batch restoring a saved model).
+  const rows = useMemo(() => models.map(toRow), [models]);
+
+  const cliIds = useMemo(() => new Set(cliProviders.map((p) => p.id)), [cliProviders]);
+  // A row is a CLI route entry only in its exact "<cli>/default" form — the
+  // OpenRouter org namespace collides with bare CLI names (e.g. qwen/qwen3-max).
+  const isCliDefault = (r: { id: string; provider: string }) =>
+    cliIds.has(r.provider) && r.id === `${r.provider}/default`;
+  const openrouterAvailable = rows.some((r) => !isCliDefault(r));
+
+  // Follow the route of an externally-changed value (settings finishing their
+  // load, a batch restoring a saved model); default to OpenRouter, else the
+  // first detected CLI, while the value is still empty.
   useEffect(() => {
-    setProv(value.includes("/") ? value.split("/")[0] : "");
-  }, [value]);
+    if (value) {
+      const cli = cliProviders.find((p) => value === `${p.id}/default`);
+      setProv(cli ? cli.id : OPENROUTER);
+    } else if (openrouterAvailable) {
+      setProv(OPENROUTER);
+    } else {
+      const first = cliProviders.find((p) => p.detected);
+      if (first) setProv(first.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, cliProviders, openrouterAvailable]);
 
   useEffect(() => {
     if (!open) return;
@@ -69,17 +98,11 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
     };
   }, [open]);
 
-  const rows = useMemo(() => models.map(toRow), [models]);
-
-  const providers = useMemo(() => {
-    const s = new Set<string>(rows.map((r) => r.provider));
-    if (prov) s.add(prov); // keep a saved value's provider listed even if absent
-    return Array.from(s).sort();
-  }, [rows, prov]);
-
   const shown = useMemo(() => {
     const keep = TIERS[tier] ?? TIERS["All"];
-    let out = rows.filter((r) => (prov === "" || r.provider === prov) && keep(r));
+    const onRoute = (r: Row) =>
+      prov === OPENROUTER || prov === "" ? !isCliDefault(r) : r.id === `${prov}/default`;
+    let out = rows.filter((r) => onRoute(r) && keep(r));
     if (colSort) {
       const col = COLUMNS.find((c) => c.key === colSort.col)!;
       out = out.slice().sort((a, b) => {
@@ -94,7 +117,8 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
       out = out.slice().sort((a, b) => compareTuples(key(a), key(b)));
     }
     return out;
-  }, [rows, prov, tier, sortLabel, colSort]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, prov, tier, sortLabel, colSort, cliIds]);
 
   const headerClick = (col: ColKey) => {
     setColSort((prev) => ({ col, asc: prev?.col === col ? !prev.asc : true }));
@@ -111,12 +135,16 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
         aria-label={`${label} provider`}
         value={prov}
         onChange={(e) => setProv(e.target.value)}
-        className="max-w-[9rem] rounded border border-gray-300 bg-white px-1.5 py-1 text-sm"
+        className="max-w-[13rem] rounded border border-gray-300 bg-white px-1.5 py-1 text-sm"
       >
-        <option value="">All providers</option>
-        {providers.map((p) => (
-          <option key={p} value={p}>{p}</option>
+        {cliProviders.map((p) => (
+          <option key={p.id} value={p.id} disabled={!p.detected}>
+            {p.detected ? `● ${p.name}` : `○ ${p.name} — not found`}
+          </option>
         ))}
+        <option value={OPENROUTER} disabled={!openrouterAvailable}>
+          {openrouterAvailable ? "● OpenRouter" : "○ OpenRouter — set API key in Settings"}
+        </option>
       </select>
       <button
         type="button"
