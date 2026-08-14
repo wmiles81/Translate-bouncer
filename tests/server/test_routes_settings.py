@@ -35,6 +35,8 @@ def test_get_models_lists_detected_clis_without_a_key(translate_root: Path, monk
         lambda: [{"id": pid, "name": ap._PROVIDER_NAMES[pid], "detected": pid != "qwen"}
                  for pid in ap.PROVIDER_LAUNCH],
     )
+    from pathlib import Path
+    monkeypatch.setattr(ap, "_codex_models_cache_path", lambda: Path("/nonexistent/mc.json"))
     client = TestClient(create_app())
     r = client.get("/models")
     assert r.status_code == 200

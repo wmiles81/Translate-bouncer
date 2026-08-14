@@ -19,11 +19,13 @@ Design:
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 import tempfile
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Optional, Sequence
 
 from acp import (
@@ -98,10 +100,42 @@ _CONFIG_ERROR_HINTS = (
 )
 
 
+def _codex_models_cache_path() -> Path:
+    return Path.home() / ".codex" / "models_cache.json"
+
+
+def codex_models() -> list[dict]:
+    """Models the user's own codex CLI knows about, from its local cache.
+
+    The ACP adapter exposes no models over ACP (session.models is None) and its
+    bundled core can lag the account's default model (which the API then rejects
+    with "requires a newer version of Codex"). The codex CLI maintains
+    ~/.codex/models_cache.json; entries with visibility "list" are offered in the
+    catalog and pinned at adapter launch via ``-c model=...``. Returns [] when the
+    cache is missing or unreadable — never guesses.
+    """
+    try:
+        data = json.loads(_codex_models_cache_path().read_text())
+    except Exception:  # noqa: BLE001 - no cache, no codex model list
+        return []
+    out: list[dict] = []
+    for m in data.get("models", []):
+        if m.get("visibility") != "list" or not m.get("slug"):
+            continue
+        out.append({
+            "slug": m["slug"],
+            "name": m.get("display_name") or m["slug"],
+            "description": (m.get("description") or "").strip(),
+            "context_length": m.get("context_window"),
+        })
+    return out
+
+
 def model_catalog() -> list[dict]:
     """One "<provider>/default" entry per detected CLI, in the model-object shape the
     picker and client/src/lib/modelDisplay.ts expect ("$0/$0" => "free")."""
-    return [
+    detected = [p for p in detect_providers() if p["detected"]]
+    cat: list[dict] = [
         {
             "id": f"{p['id']}/default",
             "name": f"{p['name']} — CLI default model",
@@ -112,10 +146,34 @@ def model_catalog() -> list[dict]:
             "context_length": None,
             "pricing": {"prompt": "0", "completion": "0"},
             "supported_parameters": [],
+            "source": "cli",
         }
-        for p in detect_providers()
-        if p["detected"]
+        for p in detected
     ]
+    if any(p["id"] == "codex" for p in detected):
+        cat += [
+            {
+                "id": f"codex/{m['slug']}",
+                "name": f"Codex — {m['name']}",
+                "description": m["description"],
+                "context_length": m["context_length"],
+                "pricing": {"prompt": "0", "completion": "0"},
+                "supported_parameters": [],
+                "source": "cli",
+            }
+            for m in codex_models()
+        ]
+    return cat
+
+
+def cli_model_ids() -> set[str]:
+    """Every model id the catalog routes through a provider CLI, right now.
+
+    Membership — not an id-shape heuristic — decides CLI vs OpenRouter, so an
+    OpenRouter org that shares a CLI's name (OpenRouter serves qwen/qwen3-max)
+    stays on OpenRouter while real codex slugs (codex/gpt-5.5) reach the CLI.
+    """
+    return {m["id"] for m in model_catalog()}
 
 
 def detect_providers() -> list[dict]:
@@ -258,10 +316,22 @@ class AcpConnectionManager:
     def _alive(self, conn: _Conn) -> bool:
         return getattr(conn.proc, "returncode", None) is None
 
-    async def _discard(self, provider: str, conn: _Conn) -> None:
+    @staticmethod
+    def _launch_plan(provider: str, model_arg: str) -> tuple[str, list[str], bool]:
+        """(pool key, extra launch args, spawn_pinned) for a turn.
+
+        codex can't switch models in-session (it exposes none over ACP), but its
+        adapter accepts ``-c model=...`` at launch — so each picked codex model
+        gets its own pooled connection, pinned at spawn.
+        """
+        if provider == "codex" and model_arg and model_arg != "default":
+            return f"codex::{model_arg}", ["-c", f'model="{model_arg}"'], True
+        return provider, [], False
+
+    async def _discard(self, key: str, conn: _Conn) -> None:
         """Remove a connection from the pool and terminate its agent (best-effort)."""
-        if self._conns.get(provider) is conn:
-            self._conns.pop(provider, None)
+        if self._conns.get(key) is conn:
+            self._conns.pop(key, None)
         try:
             if self._alive(conn):
                 conn.proc.kill()  # type: ignore[attr-defined]
@@ -272,20 +342,21 @@ class AcpConnectionManager:
         except Exception:  # noqa: BLE001 - already killed; nothing more to do
             pass
 
-    async def get(self, provider: str) -> _Conn:
+    async def get(self, provider: str, model_arg: str = "") -> _Conn:
         if provider not in PROVIDER_LAUNCH:
             raise ConfigurationError(f"Unknown provider: {provider}")
-        existing = self._conns.get(provider)
+        key, extra_args, _ = self._launch_plan(provider, model_arg)
+        existing = self._conns.get(key)
         if existing is not None and self._alive(existing):
             return existing
         async with self._spawn_locks[provider]:
-            existing = self._conns.get(provider)
+            existing = self._conns.get(key)
             if existing is not None and self._alive(existing):
                 return existing
             if existing is not None:
-                await self._discard(provider, existing)
-            conn = await self._spawn(provider)
-            self._conns[provider] = conn
+                await self._discard(key, existing)
+            conn = await self._spawn(provider, extra_args)
+            self._conns[key] = conn
             return conn
 
     @staticmethod
@@ -309,8 +380,9 @@ class AcpConnectionManager:
             },
         )
 
-    async def _spawn(self, provider: str) -> _Conn:
+    async def _spawn(self, provider: str, extra_args: Sequence[str] = ()) -> _Conn:
         cmd, args = PROVIDER_LAUNCH[provider]
+        args = [*args, *extra_args]
         env = _subprocess_env()
         executable = shutil.which(cmd, path=env.get("PATH")) or cmd
         # Base Client methods have empty bodies (fs/terminal ops we never advertise), so
@@ -366,7 +438,8 @@ class AcpConnectionManager:
         on_token: Optional[Callable[[str], None]],
         on_notice: Optional[Callable[[str], None]] = None,
     ) -> str:
-        conn = await self.get(provider)
+        key, _, spawn_pinned = self._launch_plan(provider, model_arg)
+        conn = await self.get(provider, model_arg)
         async with conn.lock:
             parts: list[str] = []
 
@@ -382,7 +455,11 @@ class AcpConnectionManager:
                 )
                 sid = session.session_id
                 conn.client.begin_turn(session_id=sid, on_text=sink)
-                target = self._resolve_model(model_arg, getattr(session, "models", None))
+                # A spawn-pinned model was fixed at launch: nothing to select, no notice.
+                target = (
+                    None if spawn_pinned
+                    else self._resolve_model(model_arg, getattr(session, "models", None))
+                )
                 if target is not None:
                     try:
                         await asyncio.wait_for(
@@ -395,7 +472,7 @@ class AcpConnectionManager:
                                 f"could not select model '{model_arg}' ({exc}); "
                                 "using the agent's current default"
                             )
-                elif model_arg and model_arg != "default":
+                elif not spawn_pinned and model_arg and model_arg != "default":
                     if on_notice is not None:
                         on_notice(
                             f"model '{model_arg}' is not exposed by {provider}; "
@@ -417,7 +494,7 @@ class AcpConnectionManager:
                         )
                     except Exception:  # noqa: BLE001 - cancel is best-effort
                         pass
-                await self._discard(provider, conn)
+                await self._discard(key, conn)
                 raise TransientError(f"agent timed out after {PROMPT_TIMEOUT:.0f}s") from exc
             except Exception as exc:  # noqa: BLE001
                 raise _classify(exc) from exc
@@ -433,8 +510,8 @@ class AcpConnectionManager:
                 conn.client.end_turn()
 
     async def aclose(self) -> None:
-        for provider, conn in list(self._conns.items()):
-            await self._discard(provider, conn)
+        for key, conn in list(self._conns.items()):
+            await self._discard(key, conn)
         shutil.rmtree(self._cwd, ignore_errors=True)
 
 

@@ -13,6 +13,7 @@ const EQBENCH: Record<string, { elo?: number; rubric?: number }> =
 export interface Row {
   id: string;
   name: string;
+  isCli: boolean;
   description: string;
   provider: string;
   context: number;
@@ -30,6 +31,7 @@ export function toRow(m: Model): Row {
   return {
     id: m.id,
     name: m.name ?? m.id,
+    isCli: m.source === "cli",
     description: (m.description ?? "").trim(),
     provider: m.id.split("/")[0] || m.id,
     context: m.context_length ?? 0,

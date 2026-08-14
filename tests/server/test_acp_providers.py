@@ -22,6 +22,11 @@ def test_split_model_variants() -> None:
     assert split_model("qwen") == ("qwen", "")
 
 
+def tmp_path_missing():
+    from pathlib import Path
+    return Path("/nonexistent/translate-test/models_cache.json")
+
+
 def test_model_catalog_lists_one_default_entry_per_detected_provider(monkeypatch) -> None:
     """No named per-provider models: the adapters expose session.models = None, so a
     named model could never be selected. One honest <provider>/default per detected CLI."""
@@ -32,6 +37,7 @@ def test_model_catalog_lists_one_default_entry_per_detected_provider(monkeypatch
         lambda: [{"id": pid, "name": ap._PROVIDER_NAMES[pid], "detected": pid in ("gemini", "codex")}
                  for pid in ap.PROVIDER_LAUNCH],
     )
+    monkeypatch.setattr(ap, "_codex_models_cache_path", lambda: tmp_path_missing())
     cat = ap.model_catalog()
     assert [m["id"] for m in cat] == ["codex/default", "gemini/default"]
     for m in cat:
@@ -266,7 +272,7 @@ def _fake_spawn(
     @asynccontextmanager
     async def spawn(client, executable, *args, env=None, **kwargs):
         if spawn_kwargs is not None:
-            spawn_kwargs.append(kwargs)
+            spawn_kwargs.append({"args": list(args), **kwargs})
         conn = connections.pop(0)
         proc = SimpleNamespace(returncode=None)
         proc.kill = lambda: setattr(proc, "returncode", -9)
@@ -412,4 +418,63 @@ async def test_successful_turn_closes_its_session(monkeypatch) -> None:
     out = await mgr.run_turn(provider="gemini", model_arg="", payload="p", on_token=None)
     assert out == ""
     assert conn_obj.closed_sessions == ["sid-1"]
+    await mgr.aclose()
+
+
+def test_codex_models_reads_the_cli_cache(monkeypatch, tmp_path) -> None:
+    """Codex models come from the codex CLI's own cache — discovered, never guessed."""
+    import json as _json
+
+    cache = tmp_path / "models_cache.json"
+    cache.write_text(_json.dumps({"models": [
+        {"slug": "gpt-5.5", "display_name": "GPT-5.5", "visibility": "list",
+         "description": "d", "context_window": 272000},
+        {"slug": "hidden-model", "display_name": "H", "visibility": "hide"},
+    ]}))
+    monkeypatch.setattr(ap, "_codex_models_cache_path", lambda: cache)
+    assert ap.codex_models() == [
+        {"slug": "gpt-5.5", "name": "GPT-5.5", "description": "d", "context_length": 272000}
+    ]
+    monkeypatch.setattr(ap, "_codex_models_cache_path", lambda: tmp_path / "missing.json")
+    assert ap.codex_models() == []
+
+
+def test_model_catalog_includes_codex_models_from_cache(monkeypatch, tmp_path) -> None:
+    import json as _json
+
+    cache = tmp_path / "models_cache.json"
+    cache.write_text(_json.dumps({"models": [
+        {"slug": "gpt-5.5", "display_name": "GPT-5.5", "visibility": "list",
+         "description": "d", "context_window": 272000},
+    ]}))
+    monkeypatch.setattr(ap, "_codex_models_cache_path", lambda: cache)
+    monkeypatch.setattr(
+        ap, "detect_providers",
+        lambda: [{"id": pid, "name": ap._PROVIDER_NAMES[pid], "detected": pid == "codex"}
+                 for pid in ap.PROVIDER_LAUNCH],
+    )
+    cat = ap.model_catalog()
+    assert [m["id"] for m in cat] == ["codex/default", "codex/gpt-5.5"]
+    assert all(m["source"] == "cli" for m in cat)
+    assert cat[1]["name"] == "Codex — GPT-5.5"
+
+
+async def test_codex_models_get_their_own_spawn_pinned_connection(monkeypatch) -> None:
+    """codex exposes no models over ACP; a picked codex model is pinned at adapter
+    launch (-c model=...), one pooled connection per model, and no substitution
+    notice fires (the model IS in effect)."""
+    procs: list = []
+    spawn_kwargs: list = []
+    conns = [_FakeAcpConnection(), _FakeAcpConnection()]
+    monkeypatch.setattr(ap, "spawn_agent_process", _fake_spawn(conns, procs, spawn_kwargs))
+    mgr = AcpConnectionManager()
+    notices: list[str] = []
+    for model in ("gpt-5.5", "gpt-5.5", "gpt-5.4"):
+        await mgr.run_turn(provider="codex", model_arg=model, payload="p",
+                           on_token=None, on_notice=notices.append)
+    assert len(procs) == 2  # gpt-5.5 reused; gpt-5.4 spawned separately
+    assert spawn_kwargs[0]["args"][-2:] == ["-c", 'model="gpt-5.5"']
+    assert spawn_kwargs[1]["args"][-2:] == ["-c", 'model="gpt-5.4"']
+    assert notices == []
+    assert {"codex::gpt-5.5", "codex::gpt-5.4"} <= set(mgr._conns)
     await mgr.aclose()

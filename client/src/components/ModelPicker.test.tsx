@@ -15,7 +15,27 @@ const sample = [
     id: "claude-code/default",
     name: "Claude Code (Claude Max) — CLI default model",
     description: "Runs on the CLI's default model.",
+    source: "cli",
     context_length: null,
+    pricing: { prompt: "0", completion: "0" },
+    supported_parameters: [],
+  },
+  {
+    id: "codex/default",
+    name: "Codex (ChatGPT Plus/Pro) — CLI default model",
+    description: "Runs on the CLI's default model.",
+    source: "cli",
+    context_length: null,
+    pricing: { prompt: "0", completion: "0" },
+    supported_parameters: [],
+  },
+  {
+    // Discovered from the codex CLI's own models cache, pinned at adapter launch.
+    id: "codex/gpt-5.5",
+    name: "Codex — GPT-5.5",
+    description: "Frontier model.",
+    source: "cli",
+    context_length: 272000,
     pricing: { prompt: "0", completion: "0" },
     supported_parameters: [],
   },
@@ -74,6 +94,21 @@ describe("ModelPicker (route selector + ModelRouter dropdown)", () => {
     expect(within(sel).getByText("● OpenRouter")).toBeInTheDocument();
   });
 
+  it("the codex source lists every model its CLI cache knows, not just default", async () => {
+    render(pickerWith(""));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Editor provider")).not.toHaveValue("")
+    );
+    await userEvent.selectOptions(screen.getByLabelText("Editor provider"), "codex");
+    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
+    const names = within(screen.getByRole("listbox"))
+      .getAllByRole("option")
+      .map((r) => r.textContent ?? "");
+    expect(names).toHaveLength(2);
+    expect(names.join()).toContain("CLI default model");
+    expect(names.join()).toContain("Codex — GPT-5.5");
+  });
+
   it("a CLI source offers exactly its default entry", async () => {
     render(pickerWith(""));
     await waitFor(() =>
@@ -82,7 +117,7 @@ describe("ModelPicker (route selector + ModelRouter dropdown)", () => {
     await userEvent.selectOptions(screen.getByLabelText("Editor provider"), "claude-code");
     await userEvent.click(screen.getByRole("button", { name: "Editor" }));
     const options = within(screen.getByRole("listbox")).getAllByRole("option");
-    expect(options).toHaveLength(1);
+    expect(options).toHaveLength(1); // claude-code exposes only its CLI default
     expect(options[0]).toHaveTextContent("Claude Code (Claude Max) — CLI default model");
   });
 
@@ -95,7 +130,7 @@ describe("ModelPicker (route selector + ModelRouter dropdown)", () => {
     const names = within(screen.getByRole("listbox"))
       .getAllByRole("option")
       .map((r) => r.textContent ?? "");
-    expect(names).toHaveLength(3);
+    expect(names).toHaveLength(3); // only vendor models; all CLI rows excluded
     expect(names.join()).toContain("Claude Sonnet 4"); // actual vendor: anthropic
     expect(names.join()).toContain("Qwen: Qwen3 Max"); // qwen/... stays OpenRouter
     expect(names.join()).not.toContain("CLI default model");

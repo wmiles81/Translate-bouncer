@@ -202,3 +202,32 @@ def test_get_chapter_docs_after_editor_round(app_with_book, monkeypatch) -> None
     # Working doc is now the editor's output, previous is the source-translated
     assert body["working"]["paragraphs"][0]["text"] == "Chapitre 1"
     assert body["previous"] is not None
+
+
+def test_make_client_routes_codex_model_ids_to_the_cli(translate_root, monkeypatch) -> None:
+    """codex/<slug> ids from the CLI's own cache must reach the CLI, while an
+    OpenRouter org sharing a CLI name (qwen/qwen3-max) must not."""
+    import json as _json
+
+    import server.acp_providers as ap
+    from server.acp_providers import AcpProviderClient
+    from server.config import Config, save_config
+    from server.openrouter import OpenRouterClient
+    from server.routes.chapters import _make_client
+
+    cache = translate_root / "models_cache.json"
+    cache.write_text(_json.dumps({"models": [
+        {"slug": "gpt-5.5", "display_name": "GPT-5.5", "visibility": "list"},
+    ]}))
+    monkeypatch.setattr(ap, "_codex_models_cache_path", lambda: cache)
+    monkeypatch.setattr(
+        ap, "detect_providers",
+        lambda: [{"id": pid, "name": ap._PROVIDER_NAMES[pid], "detected": True}
+                 for pid in ap.PROVIDER_LAUNCH],
+    )
+    save_config(Config(openrouter_api_key="sk-or-test"))
+
+    assert isinstance(_make_client("codex/gpt-5.5"), AcpProviderClient)
+    assert isinstance(_make_client("codex/default"), AcpProviderClient)
+    # Not in the CLI catalog -> OpenRouter, even though "qwen" names a CLI.
+    assert isinstance(_make_client("qwen/qwen3-max"), OpenRouterClient)

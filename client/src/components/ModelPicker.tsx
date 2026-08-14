@@ -62,9 +62,10 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
   const cliIds = useMemo(() => new Set(cliProviders.map((p) => p.id)), [cliProviders]);
   // A row is a CLI route entry only in its exact "<cli>/default" form — the
   // OpenRouter org namespace collides with bare CLI names (e.g. qwen/qwen3-max).
-  const isCliDefault = (r: { id: string; provider: string }) =>
-    cliIds.has(r.provider) && r.id === `${r.provider}/default`;
-  const openrouterAvailable = rows.some((r) => !isCliDefault(r));
+  // The server marks CLI-routed entries (source: "cli"); everything else is
+  // OpenRouter — so an OpenRouter org that shares a CLI's name stays put.
+  const isCliRow = (r: { isCli: boolean }) => r.isCli;
+  const openrouterAvailable = rows.some((r) => !isCliRow(r));
 
   // Follow the route of an externally-changed value (settings finishing their
   // load, a batch restoring a saved model); default to OpenRouter, else the
@@ -101,7 +102,7 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
   const shown = useMemo(() => {
     const keep = TIERS[tier] ?? TIERS["All"];
     const onRoute = (r: Row) =>
-      prov === OPENROUTER || prov === "" ? !isCliDefault(r) : r.id === `${prov}/default`;
+      prov === OPENROUTER || prov === "" ? !isCliRow(r) : isCliRow(r) && r.provider === prov;
     let out = rows.filter((r) => onRoute(r) && keep(r));
     if (colSort) {
       const col = COLUMNS.find((c) => c.key === colSort.col)!;

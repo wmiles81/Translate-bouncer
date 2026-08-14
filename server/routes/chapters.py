@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from server.acp_providers import (
     PROVIDER_LAUNCH,
     AcpProviderClient,
+    cli_model_ids,
     require_provider,
     split_model,
 )
@@ -45,15 +46,15 @@ class RoundRequest(BaseModel):
 
 
 def _make_client(model: str):
-    """Route by model id: exactly "<cli>/default" -> that provider CLI over ACP;
-    anything else -> OpenRouter.
+    """Route by model id: anything the CLI catalog advertises -> that provider CLI
+    over ACP; anything else -> OpenRouter.
 
-    The catalog only ever advertises "<cli>/default" for CLI providers (the adapters
-    can't switch models), and OpenRouter's org namespace collides with bare CLI names
-    (e.g. OpenRouter serves qwen/qwen3-max) — so the CLI match must be exact.
+    Membership in the live CLI catalog decides, not the id's shape: codex offers
+    real per-model ids from its own cache (codex/gpt-5.5), while OpenRouter's org
+    namespace collides with bare CLI names (OpenRouter serves qwen/qwen3-max).
     """
     provider, model_arg = split_model(model)
-    if provider in PROVIDER_LAUNCH and model_arg in ("", "default"):
+    if model in cli_model_ids() or (provider in PROVIDER_LAUNCH and model_arg in ("", "default")):
         require_provider(model)
         return AcpProviderClient()
     cfg = load_config()

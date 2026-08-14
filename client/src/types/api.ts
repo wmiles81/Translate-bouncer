@@ -135,6 +135,9 @@ export interface Model {
   id: string;
   name?: string;
   description?: string;
+  // "cli" = routed through a local provider CLI (subscription-covered); absent
+  // for OpenRouter catalog entries.
+  source?: "cli";
   created?: number;
   context_length?: number;
   pricing?: {
