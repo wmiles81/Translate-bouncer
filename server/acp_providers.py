@@ -21,8 +21,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import signal
 import re
 import shutil
+import subprocess
 import tempfile
 from collections import deque
 from contextlib import AsyncExitStack
@@ -247,6 +249,57 @@ def _with_provider_context(provider: str, exc: Exception) -> Exception:
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
+def _descendant_pids(pid: int) -> list[int]:
+    """Descendants of ``pid``, deepest first. Empty when ps is unavailable."""
+    try:
+        out = subprocess.run(
+            ["ps", "-eo", "pid=,ppid="], capture_output=True, text=True, timeout=5
+        ).stdout
+    except Exception:  # noqa: BLE001 - best-effort cleanup, never fatal
+        return []
+    children: dict[int, list[int]] = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        try:
+            child, parent = int(parts[0]), int(parts[1])
+        except ValueError:
+            continue
+        children.setdefault(parent, []).append(child)
+
+    ordered: list[int] = []
+
+    def walk(p: int) -> None:
+        for c in children.get(p, ()):
+            walk(c)
+            ordered.append(c)  # children before their parent
+
+    walk(pid)
+    return ordered
+
+
+async def _kill_process_tree(proc) -> None:
+    """Kill an agent process AND everything it spawned.
+
+    We launch adapters through ``npx``, so ``proc`` is a Node wrapper whose real
+    work happens in a child (e.g. codex-acp's bundled Rust binary). Killing only
+    the wrapper reparents that child to init, where it lives on holding memory
+    and a provider session — 14 such orphans accumulated in one day of testing.
+    """
+    pid = getattr(proc, "pid", None)
+    if pid is not None:
+        for child in await asyncio.to_thread(_descendant_pids, pid):
+            try:
+                os.kill(child, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+    try:
+        proc.kill()
+    except (ProcessLookupError, AttributeError):
+        pass
+
+
 async def _drain_stderr(stream, buf: deque) -> None:
     """Keep the last few adapter stderr lines; never raise into the caller."""
     try:
@@ -434,11 +487,8 @@ class AcpConnectionManager:
             self._conns.pop(key, None)
         if conn.stderr_task is not None:
             conn.stderr_task.cancel()
-        try:
-            if self._alive(conn):
-                conn.proc.kill()  # type: ignore[attr-defined]
-        except (ProcessLookupError, AttributeError):
-            pass
+        if self._alive(conn):
+            await _kill_process_tree(conn.proc)
         try:
             await asyncio.wait_for(conn.stack.aclose(), timeout=10.0)
         except Exception:  # noqa: BLE001 - already killed; nothing more to do
@@ -677,7 +727,7 @@ class AcpProviderClient:
                 )
             except ConfigurationError:
                 raise  # user must act; retrying won't help
-            except TransientError as exc:
+            except TransientError:
                 if attempt < total:
                     await asyncio.sleep(delay)
                     continue

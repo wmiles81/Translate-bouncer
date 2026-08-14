@@ -570,3 +570,44 @@ def test_signin_hint_only_on_auth_failures() -> None:
         "codex", ConfigurationError("requires a newer version of Codex — pick an older model")
     )
     assert "login" not in str(unsupported)
+
+
+async def test_kill_process_tree_reaps_the_child_the_wrapper_spawned() -> None:
+    """We launch adapters via npx, so killing our process leaves the real worker
+    (codex-acp's Rust binary) orphaned. The tree kill must take both."""
+    import os
+    import signal as _signal
+
+    from server.acp_providers import _kill_process_tree
+
+    # A wrapper that spawns a child and waits — the npx/adapter shape.
+    proc = await asyncio.create_subprocess_exec(
+        "/bin/sh", "-c", "sleep 60 & echo $!; wait",
+        stdout=asyncio.subprocess.PIPE,
+    )
+    child_pid = int((await asyncio.wait_for(proc.stdout.readline(), 5)).strip())
+
+    def alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+
+    assert alive(child_pid), "child should be running before the kill"
+
+    await _kill_process_tree(proc)
+
+    for _ in range(30):  # let init reap; ~3s worst case
+        if not alive(child_pid) and proc.returncode is not None:
+            break
+        await asyncio.sleep(0.1)
+        if proc.returncode is None:
+            try:
+                await asyncio.wait_for(proc.wait(), 0.05)
+            except asyncio.TimeoutError:
+                pass
+
+    assert not alive(child_pid), "orphaned grandchild survived the kill"
+    assert proc.returncode is not None, "wrapper survived the kill"
+    _ = _signal  # keep the import meaningful if the assertions change

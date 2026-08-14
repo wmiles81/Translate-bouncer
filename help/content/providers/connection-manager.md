@@ -76,8 +76,11 @@ Without this, a timed-out turn that keeps generating would interleave its late c
 
 ## Discarding a connection
 
-`_discard(key, conn)` pops the connection (identity-checked so it can't evict a fresher one), cancels the stderr reader task, kills the process, and closes the stack under a 10 s cap.
+`_discard(key, conn)` pops the connection (identity-checked so it can't evict a fresher one), cancels the stderr reader task, kills the **whole process tree**, and closes the stack under a 10 s cap.
 
 It runs when a prompt times out — after a best-effort `cancel(session_id)` — because a connection whose agent may still be generating **cannot be trusted for reuse**. The retry then spawns a fresh agent.
+
+> [!WARNING]
+> Kill the tree, not the process. An adapter launched through npx is three levels deep — `npm → node → codex-acp (Rust)` — and our handle is the top one. Killing only that reparents the Rust worker to init, where it keeps holding memory and a provider session. One day of testing accumulated **31 processes, 14 orphaned, ~1 GB**. `_kill_process_tree(proc)` walks `ps -eo pid=,ppid=`, kills descendants deepest-first, then the process itself.
 
 `aclose()` discards every pooled connection and `rmtree`s the `translate-acp-*` temp cwd.
