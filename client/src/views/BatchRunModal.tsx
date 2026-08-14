@@ -47,6 +47,7 @@ export default function BatchRunModal({ book, onClose, onCompleted }: Props) {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [summary, setSummary] = useState<{ completed: number; errors: number; stopped: boolean } | null>(null);
   const stopRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
   const appendActivity = useCallback((text: string, kind: ActivityEntry["kind"]) => {
@@ -94,6 +95,7 @@ export default function BatchRunModal({ book, onClose, onCompleted }: Props) {
     const chs = selectedChapters();
     if (chs.length === 0) return;
     stopRef.current = false;
+    abortRef.current = new AbortController();
     setEvents([]);
     setActivity([]);
     setSummary(null);
@@ -107,6 +109,7 @@ export default function BatchRunModal({ book, onClose, onCompleted }: Props) {
         roundsPerChapter: rounds,
         finalize,
         shouldStop: () => stopRef.current,
+        signal: abortRef.current.signal,
         onProgress: (ev) => setEvents((prev) => [...prev, ev]),
       });
       setSummary(result);
@@ -144,13 +147,39 @@ export default function BatchRunModal({ book, onClose, onCompleted }: Props) {
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded bg-white shadow-lg">
         <header className="flex items-center justify-between border-b border-gray-200 px-4 py-2">
           <h2 className="text-lg font-semibold">Batch run</h2>
-          <button
-            type="button"
-            onClick={running ? () => (stopRef.current = true) : onClose}
-            className="rounded border border-gray-300 px-2 py-0.5 text-sm hover:bg-gray-50"
-          >
-            {running ? "Stop after current chapter" : "Close"}
-          </button>
+          <div className="flex gap-2">
+            {running && (
+              <button
+                type="button"
+                onClick={() => (stopRef.current = true)}
+                className="rounded border border-gray-300 px-2 py-0.5 text-sm hover:bg-gray-50"
+              >
+                Stop after current chapter
+              </button>
+            )}
+            {running ? (
+              <button
+                type="button"
+                onClick={() => {
+                  // Abandon the in-flight round: the server cancels the agent
+                  // turn on disconnect; the chapter stays at its last saved round.
+                  stopRef.current = true;
+                  abortRef.current?.abort();
+                }}
+                className="rounded border border-red-300 px-2 py-0.5 text-sm text-red-700 hover:bg-red-50"
+              >
+                Stop now
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded border border-gray-300 px-2 py-0.5 text-sm hover:bg-gray-50"
+              >
+                Close
+              </button>
+            )}
+          </div>
         </header>
 
         {!running && !summary && (

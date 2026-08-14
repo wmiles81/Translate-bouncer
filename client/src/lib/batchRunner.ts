@@ -36,6 +36,9 @@ export interface BatchRunOptions {
   finalize: boolean;
   onProgress: (event: BatchEvent) => void;
   shouldStop: () => boolean;
+  // Aborting cancels the in-flight round immediately ("Stop now"); shouldStop
+  // alone finishes the current chapter first ("Stop after current chapter").
+  signal?: AbortSignal;
 }
 
 export interface BatchSummary {
@@ -49,8 +52,8 @@ export interface BatchSummary {
  * and optionally finalizing each. Errors on a chapter are reported via
  * onProgress but don't abort the batch — the next chapter still runs.
  *
- * `shouldStop` is checked between chapters and between rounds. An in-flight
- * HTTP call is not interrupted.
+ * `shouldStop` is checked between chapters and between rounds; `signal`
+ * additionally aborts the in-flight HTTP call for an immediate stop.
  */
 export async function runBatch(opts: BatchRunOptions): Promise<BatchSummary> {
   let completed = 0;
@@ -87,7 +90,7 @@ export async function runBatch(opts: BatchRunOptions): Promise<BatchSummary> {
           stage: "editor",
         });
         if (needsLeadingEditor(state)) {
-          state = await runEditorRound(opts.bookSlug, ch.n, opts.editorModel);
+          state = await runEditorRound(opts.bookSlug, ch.n, opts.editorModel, opts.signal);
         }
         opts.onProgress({
           type: "round_start",
@@ -96,9 +99,9 @@ export async function runBatch(opts: BatchRunOptions): Promise<BatchSummary> {
           totalRounds: opts.roundsPerChapter,
           stage: "reviewer",
         });
-        await runReviewerRound(opts.bookSlug, ch.n, opts.reviewerModel);
+        await runReviewerRound(opts.bookSlug, ch.n, opts.reviewerModel, opts.signal);
         // Apply reviewer suggestions via another editor pass.
-        state = await runEditorRound(opts.bookSlug, ch.n, opts.editorModel);
+        state = await runEditorRound(opts.bookSlug, ch.n, opts.editorModel, opts.signal);
         opts.onProgress({
           type: "round_done",
           chapterN: ch.n,
@@ -112,9 +115,14 @@ export async function runBatch(opts: BatchRunOptions): Promise<BatchSummary> {
           chapterN: ch.n,
           stage: "finalize",
         });
-        await finalizeChapter(opts.bookSlug, ch.n);
+        await finalizeChapter(opts.bookSlug, ch.n, opts.signal);
       }
     } catch (e) {
+      if (opts.signal?.aborted || (e instanceof DOMException && e.name === "AbortError")) {
+        // "Stop now": not a chapter failure — end the batch quietly.
+        stopped = true;
+        break;
+      }
       chapterError = true;
       const detail = (e as { detail?: unknown })?.detail;
       let msg = e instanceof Error ? e.message : String(e);
