@@ -1,0 +1,89 @@
+{
+  "title": "Translate — Developer Help",
+  "storageKey": "translate-devhelp",
+  "defaultTopic": "orientation:architecture",
+  "defaultExpanded": ["orientation", "concepts"],
+  "features": { "slashCommands": false },
+  "contextMap": {
+    "settings-view": "frontend:model-picker",
+    "batch-run": "frontend:batch-runner",
+    "chapter-view": "concepts:rounds",
+    "provider-error": "providers:errors"
+  },
+  "categories": [
+    {
+      "id": "orientation",
+      "label": "Orientation",
+      "icon": "🗺️",
+      "pages": [
+        { "id": "architecture", "title": "Architecture Map: How a Round Flows", "file": "orientation/architecture.md" },
+        { "id": "repo-layout", "title": "Repo Layout: Where Everything Lives", "file": "orientation/repo-layout.md" },
+        { "id": "dev-loop", "title": "Running Tests and the Dev Loop", "file": "orientation/dev-loop.md" }
+      ]
+    },
+    {
+      "id": "concepts",
+      "label": "Core Concepts",
+      "icon": "🧩",
+      "pages": [
+        { "id": "rounds", "title": "Rounds: Draft, Review, Revise", "file": "concepts/rounds.md" },
+        { "id": "state", "title": "On-Disk State: books, chapters, meta.json", "file": "concepts/state.md" },
+        { "id": "routing", "title": "Model Routing: CLI Catalog vs OpenRouter", "file": "concepts/routing.md" }
+      ]
+    },
+    {
+      "id": "providers",
+      "label": "ACP Providers",
+      "icon": "🔌",
+      "pages": [
+        { "id": "connection-manager", "title": "Connection Manager: Locks, Timeouts, Sessions", "file": "providers/connection-manager.md" },
+        { "id": "errors", "title": "Error Taxonomy: What Retries and What Doesn't", "file": "providers/errors.md" },
+        { "id": "quirks", "title": "Per-Provider Quirks (Claude, Codex, Gemini, Qwen)", "file": "providers/quirks.md" }
+      ]
+    },
+    {
+      "id": "frontend",
+      "label": "Frontend",
+      "icon": "🖥️",
+      "pages": [
+        { "id": "model-picker", "title": "ModelPicker: Provider Selector + Model Table", "file": "frontend/model-picker.md" },
+        { "id": "batch-runner", "title": "Batch Runner, Stopping, and Live Streaming", "file": "frontend/batch-runner.md" }
+      ]
+    },
+    {
+      "id": "api",
+      "label": "HTTP API",
+      "icon": "🛰️",
+      "pages": [
+        { "id": "endpoints", "title": "Endpoint Reference", "file": "api/endpoints.md" }
+      ]
+    },
+    {
+      "id": "shipping",
+      "label": "Packaging & Release",
+      "icon": "📦",
+      "pages": [
+        { "id": "packaging", "title": "Building and Testing Translate.zip", "file": "shipping/packaging.md" }
+      ]
+    },
+    {
+      "id": "quirks",
+      "label": "Quirks & Known Issues",
+      "icon": "⚠️",
+      "pages": [
+        { "id": "known-issues", "title": "Known Issues and Live Gotchas", "file": "quirks/known-issues.md" },
+        { "id": "environment", "title": "Environment Traps (SMB, ports, locks, tsc)", "file": "quirks/environment.md" }
+      ]
+    },
+    {
+      "id": "agents",
+      "label": "Agents, Skills & Conventions",
+      "icon": "🤖",
+      "pages": [
+        { "id": "conventions", "title": "House Rules an Agent Must Follow", "file": "agents/conventions.md" },
+        { "id": "workflows", "title": "Skills and Workflows Used on This Repo", "file": "agents/workflows.md" },
+        { "id": "maintaining-help", "title": "Keeping This Help Current", "file": "agents/maintaining-help.md" }
+      ]
+    }
+  ]
+}
