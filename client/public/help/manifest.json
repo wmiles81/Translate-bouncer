@@ -1,0 +1,65 @@
+{
+  "title": "Translate — Help",
+  "storageKey": "translate-userhelp",
+  "defaultTopic": "start:what-it-does",
+  "defaultExpanded": ["start", "using"],
+  "features": { "slashCommands": false },
+  "contextMap": {
+    "settings": "setup:connect-ai",
+    "books": "start:add-a-book",
+    "chapter": "using:one-round",
+    "batch": "using:batch"
+  },
+  "categories": [
+    {
+      "id": "start",
+      "label": "Getting Started",
+      "icon": "🚀",
+      "pages": [
+        { "id": "what-it-does", "title": "What Translate Does", "file": "start/what-it-does.md" },
+        { "id": "first-run", "title": "Starting Translate the First Time", "file": "start/first-run.md" },
+        { "id": "add-a-book", "title": "Adding a Book", "file": "start/add-a-book.md" }
+      ]
+    },
+    {
+      "id": "setup",
+      "label": "Setting Up AI",
+      "icon": "🔌",
+      "pages": [
+        { "id": "connect-ai", "title": "Connecting an AI: Subscription or OpenRouter", "file": "setup/connect-ai.md" },
+        { "id": "choosing-models", "title": "Choosing Editor and Reviewer Models", "file": "setup/choosing-models.md" }
+      ]
+    },
+    {
+      "id": "using",
+      "label": "Editing Your Book",
+      "icon": "✍️",
+      "pages": [
+        { "id": "one-round", "title": "Running a Round on One Chapter", "file": "using/one-round.md" },
+        { "id": "reading-panes", "title": "Reading the Three Panes and the Diff", "file": "using/reading-panes.md" },
+        { "id": "suggestions", "title": "Reviewer Suggestions and the Dialog View", "file": "using/suggestions.md" },
+        { "id": "batch", "title": "Running a Whole Book at Once", "file": "using/batch.md" },
+        { "id": "finishing", "title": "Finishing a Chapter and Getting Your Word File", "file": "using/finishing.md" }
+      ]
+    },
+    {
+      "id": "manage",
+      "label": "Managing Your Work",
+      "icon": "📚",
+      "pages": [
+        { "id": "files", "title": "Where Your Files Are Saved", "file": "manage/files.md" },
+        { "id": "remove-restore", "title": "Removing a Book or Starting It Over", "file": "manage/remove-restore.md" },
+        { "id": "prompts", "title": "Changing the Editor and Reviewer Instructions", "file": "manage/prompts.md" }
+      ]
+    },
+    {
+      "id": "help",
+      "label": "When Something Goes Wrong",
+      "icon": "🩺",
+      "pages": [
+        { "id": "troubleshooting", "title": "Troubleshooting: Common Problems", "file": "help/troubleshooting.md" },
+        { "id": "costs", "title": "What This Costs You", "file": "help/costs.md" }
+      ]
+    }
+  ]
+}

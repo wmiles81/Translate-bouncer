@@ -63,7 +63,17 @@ export default function SettingsRoute() {
     <div data-testid="settings-route" className="mx-auto max-w-2xl p-6">
       <header className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Settings</h1>
-        <Link to="/" className="text-sm text-blue-600 hover:underline">← Books</Link>
+        <div className="flex items-center gap-3">
+          <a
+            href="/help/index.html?ctx=settings"
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm text-blue-600 hover:underline"
+          >
+            Help
+          </a>
+          <Link to="/" className="text-sm text-blue-600 hover:underline">← Books</Link>
+        </div>
       </header>
 
       <section className="mb-6 space-y-3">

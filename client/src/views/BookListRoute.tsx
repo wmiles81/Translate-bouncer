@@ -23,6 +23,14 @@ export default function BookListRoute() {
           >
             + New book
           </button>
+          <a
+            href="/help/index.html?ctx=books"
+            target="_blank"
+            rel="noreferrer"
+            className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
+          >
+            Help
+          </a>
           <Link
             to="/settings"
             className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"

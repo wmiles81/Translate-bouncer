@@ -49,6 +49,15 @@ export default function TopBar({
       <div className="ml-auto flex items-center gap-4">
         <ModelPicker label="Editor" value={editorModel} models={models} onChange={onEditorModelChange} />
         <ModelPicker label="Reviewer" value={reviewerModel} models={models} onChange={onReviewerModelChange} />
+        <a
+          href="/help/index.html?ctx=chapter"
+          target="_blank"
+          rel="noreferrer"
+          title="Open the Translate handbook"
+          className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
+        >
+          ? Help
+        </a>
         <Link to="/settings" className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50">
           ⚙ Settings
         </Link>
