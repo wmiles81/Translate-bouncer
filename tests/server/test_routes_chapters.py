@@ -15,8 +15,7 @@ from server.routes import chapters as chapters_routes
 
 @pytest.fixture
 def app_with_book(translate_root: Path, fixtures_dir: Path, monkeypatch):
-    save_config(Config(openrouter_api_key="sk-or-test",
-                       default_models={"editor": "ed", "reviewer": "rv"}))
+    save_config(Config(default_models={"editor": "ed", "reviewer": "rv"}))
     client = TestClient(create_app())
     r = client.post("/books", json={
         "translated_path": str(fixtures_dir / "sample-fr-folder"),
@@ -52,7 +51,7 @@ def test_post_round_editor_runs_pass(app_with_book, monkeypatch) -> None:
     # Force the route to use a mocked client.
     fake_client = AsyncMock()
     fake_client.chat = AsyncMock(return_value=_EDITOR_MOCK_RESPONSE)
-    monkeypatch.setattr(chapters_routes, "_make_client", lambda cfg: fake_client)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake_client)
 
     r = client.post(
         f"/books/{slug}/chapter/1/round/editor",
@@ -71,7 +70,7 @@ def test_post_round_reviewer_after_editor(app_with_book, monkeypatch) -> None:
         _EDITOR_MOCK_RESPONSE,
         '[{"quote": "Salut", "comment": "consider Bonjour"}]',
     ])
-    monkeypatch.setattr(chapters_routes, "_make_client", lambda cfg: fake_client)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake_client)
     client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
     r = client.post(f"/books/{slug}/chapter/1/round/reviewer", json={"model": "rv"})
     assert r.status_code == 200
@@ -83,7 +82,7 @@ def test_post_finalize_marks_done(app_with_book, monkeypatch) -> None:
     client, slug = app_with_book
     fake_client = AsyncMock()
     fake_client.chat = AsyncMock(return_value=_EDITOR_MOCK_RESPONSE)
-    monkeypatch.setattr(chapters_routes, "_make_client", lambda cfg: fake_client)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake_client)
     client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
     r = client.post(f"/books/{slug}/chapter/1/finalize")
     assert r.status_code == 200
@@ -95,7 +94,7 @@ def test_post_round_editor_returns_502_on_transient_error(app_with_book, monkeyp
     client, slug = app_with_book
     fake_client = AsyncMock()
     fake_client.chat = AsyncMock(side_effect=TransientError("upstream 503"))
-    monkeypatch.setattr(chapters_routes, "_make_client", lambda cfg: fake_client)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake_client)
     r = client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
     assert r.status_code == 502
     body = r.json()
@@ -116,6 +115,77 @@ def test_get_chapter_docs_returns_english_and_translated(app_with_book) -> None:
     assert len(body["english"]["paragraphs"]) > 0
 
 
+def test_round_rejects_openrouter_model_without_key_before_any_event(app_with_book) -> None:
+    """Non-CLI model ids route to OpenRouter; without a key that's a clean 400 upfront."""
+    client, slug = app_with_book
+    r = client.post(
+        f"/books/{slug}/chapter/1/round/editor",
+        json={"model": "anthropic/claude-sonnet-4"},
+    )
+    assert r.status_code == 400
+    assert "OpenRouter" in r.json()["detail"]
+    assert "anthropic/claude-sonnet-4" in r.json()["detail"]
+
+
+def test_make_client_routes_by_model_namespace(translate_root, monkeypatch) -> None:
+    from server.acp_providers import AcpProviderClient
+    from server.config import Config, save_config
+    from server.openrouter import OpenRouterClient
+    from server.routes.chapters import _make_client
+
+    # CLI namespace -> ACP client (detection satisfied via monkeypatch).
+    import server.acp_providers as ap
+    monkeypatch.setattr(
+        ap, "detect_providers",
+        lambda: [{"id": pid, "name": ap._PROVIDER_NAMES[pid], "detected": True}
+                 for pid in ap.PROVIDER_LAUNCH],
+    )
+    assert isinstance(_make_client("gemini/default"), AcpProviderClient)
+
+    # Anything else -> OpenRouter, carrying the configured key.
+    save_config(Config(openrouter_api_key="sk-or-test"))
+    or_client = _make_client("z-ai/glm-4.7")
+    assert isinstance(or_client, OpenRouterClient)
+    assert or_client.api_key == "sk-or-test"
+
+    # OpenRouter's org namespace collides with bare CLI names (it serves qwen/... model
+    # ids); only the exact "<cli>/default" form routes to a CLI.
+    assert isinstance(_make_client("qwen/qwen3-max"), OpenRouterClient)
+
+
+def test_on_retry_resets_coalescer_buffer(monkeypatch) -> None:
+    """A failed attempt's sub-threshold buffered tail must not survive into the retry.
+
+    Regression test for the coalescer being shared across chat()'s internal retries:
+    on_retry must clear the buffer *before* publishing the retry status event, so a
+    later flush() never emits the stale prefix from the previous attempt.
+    """
+    published: list[dict] = []
+    monkeypatch.setattr(chapters_routes.EVENT_BUS, "publish", published.append)
+
+    on_retry, on_token, on_notice = chapters_routes._round_callbacks(1, 1, "editor")
+
+    # Sub-threshold chunk from the failed attempt — buffered, not yet published.
+    on_token("stale partial output")
+    assert not any(e.get("type") == "token" for e in published)
+
+    on_retry(1, 3)
+    retry_events = [e for e in published if e.get("type") == "status" and e.get("phase") == "retry"]
+    assert len(retry_events) == 1
+
+    # The stale buffered text must be gone — a later flush publishes nothing.
+    on_token.flush()
+    token_events = [e for e in published if e.get("type") == "token"]
+    assert token_events == []
+
+    # New chunks after the retry behave normally (flush the buffer once non-empty).
+    on_token("fresh output")
+    on_token.flush()
+    token_events = [e for e in published if e.get("type") == "token"]
+    assert len(token_events) == 1
+    assert token_events[0]["text"] == "fresh output"
+
+
 def test_get_chapter_docs_after_editor_round(app_with_book, monkeypatch) -> None:
     client, slug = app_with_book
     fake_client = AsyncMock()
@@ -125,10 +195,112 @@ def test_get_chapter_docs_after_editor_round(app_with_book, monkeypatch) -> None
         "[3]\nFR: Elle pensa : « Pourquoi moi ? »\n\n"
         "[4]\nFR: La fenêtre était *froide* sous sa main.\n"
     ))
-    monkeypatch.setattr(chapters_routes, "_make_client", lambda cfg: fake_client)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake_client)
     client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
     r = client.get(f"/books/{slug}/chapter/1/docs")
     body = r.json()
     # Working doc is now the editor's output, previous is the source-translated
     assert body["working"]["paragraphs"][0]["text"] == "Chapitre 1"
     assert body["previous"] is not None
+
+
+def test_make_client_routes_codex_model_ids_to_the_cli(translate_root, monkeypatch) -> None:
+    """codex/<slug> ids from the CLI's own cache must reach the CLI, while an
+    OpenRouter org sharing a CLI name (qwen/qwen3-max) must not."""
+    import json as _json
+
+    import server.acp_providers as ap
+    from server.acp_providers import AcpProviderClient
+    from server.config import Config, save_config
+    from server.openrouter import OpenRouterClient
+    from server.routes.chapters import _make_client
+
+    cache = translate_root / "models_cache.json"
+    cache.write_text(_json.dumps({"models": [
+        {"slug": "gpt-5.5", "display_name": "GPT-5.5", "visibility": "list"},
+    ]}))
+    monkeypatch.setattr(ap, "_codex_models_cache_path", lambda: cache)
+    monkeypatch.setattr(
+        ap, "detect_providers",
+        lambda: [{"id": pid, "name": ap._PROVIDER_NAMES[pid], "detected": True}
+                 for pid in ap.PROVIDER_LAUNCH],
+    )
+    save_config(Config(openrouter_api_key="sk-or-test"))
+
+    assert isinstance(_make_client("codex/gpt-5.5"), AcpProviderClient)
+    assert isinstance(_make_client("codex/default"), AcpProviderClient)
+    # Not in the CLI catalog -> OpenRouter, even though "qwen" names a CLI.
+    assert isinstance(_make_client("qwen/qwen3-max"), OpenRouterClient)
+
+
+def test_one_requested_round_is_one_round_number(app_with_book, monkeypatch) -> None:
+    """Editor -> Reviewer -> apply must land on round 1, not inflate to round 2.
+
+    The apply pass writes round-1-editor-revised.* beside the untouched draft.
+    """
+    client, slug = app_with_book
+    fake = AsyncMock()
+    fake.chat = AsyncMock(side_effect=[
+        _EDITOR_MOCK_RESPONSE,                                   # editor draft
+        '[{"quote": "Salut", "comment": "consider Bonjour"}]',   # reviewer
+        _EDITOR_MOCK_RESPONSE,                                   # apply suggestions
+    ])
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake)
+
+    client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
+    client.post(f"/books/{slug}/chapter/1/round/reviewer", json={"model": "rv"})
+    r = client.post(
+        f"/books/{slug}/chapter/1/round/editor",
+        json={"model": "ed", "apply_suggestions": True},
+    )
+    assert r.status_code == 200
+
+    state = client.get(f"/books/{slug}/chapter/1/state").json()
+    assert state["current_round"] == 1, "one requested round must be one round"
+    assert len(state["rounds"]) == 1
+    entry = state["rounds"][0]
+    assert entry["editor_completed_at"] and entry["reviewer_completed_at"]
+    assert entry["revised_completed_at"], "the apply pass completes the round"
+
+    from server.paths import book_dir
+    cdir = book_dir(slug) / "chapters" / "ch01"
+    assert (cdir / "round-1-editor.json").exists()           # draft preserved
+    assert (cdir / "round-1-editor-revised.json").exists()   # revision beside it
+    assert not (cdir / "round-2-editor.json").exists()       # no phantom round
+
+
+def test_apply_without_suggestions_is_rejected(app_with_book, monkeypatch) -> None:
+    client, slug = app_with_book
+    fake = AsyncMock()
+    fake.chat = AsyncMock(return_value=_EDITOR_MOCK_RESPONSE)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake)
+    client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
+    r = client.post(
+        f"/books/{slug}/chapter/1/round/editor",
+        json={"model": "ed", "apply_suggestions": True},
+    )
+    assert r.status_code == 400
+    assert "no reviewer suggestions" in r.json()["detail"]
+
+
+def test_finalize_all_finalizes_rounds_and_skips_untouched(app_with_book, monkeypatch) -> None:
+    """One press finalizes every chapter that has work; chapters with no rounds
+    are reported as skipped rather than failing the call."""
+    client, slug = app_with_book
+    fake = AsyncMock()
+    fake.chat = AsyncMock(return_value=_EDITOR_MOCK_RESPONSE)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake)
+    client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
+
+    r = client.post(f"/books/{slug}/finalize-all")
+    assert r.status_code == 200
+    body = r.json()
+    assert 1 in body["finalized"]
+    assert all(s["n"] != 1 for s in body["skipped"])
+    assert client.get(f"/books/{slug}/chapter/1/state").json()["status"] == "done"
+    # A chapter that never ran a round is skipped with a reason, not an error.
+    assert any("no completed Editor round" in s["reason"] for s in body["skipped"])
+
+
+def test_finalize_all_unknown_book_is_404(translate_root) -> None:
+    assert TestClient(create_app()).post("/books/nope/finalize-all").status_code == 404

@@ -18,11 +18,23 @@ WHAT YOU NEED FIRST
        - Linux:   sudo apt install python3.11 python3.11-venv      (Debian/Ubuntu)
                   sudo dnf install python3.11                       (Fedora)
                   sudo pacman -S python                             (Arch)
-  2. An OpenRouter account and API key
-       - Sign up at https://openrouter.ai
-       - Click "Keys" in the top-right, copy a key, keep it secret
-       - You pay OpenRouter for whatever AI calls you make.
-         Pricing for every model is shown next to its name in the app.
+
+  2. At least ONE way to reach an AI (either works; you can use both):
+
+     a) An AI subscription you already pay for, through its command-line
+        tool, signed in on this computer:
+          - Claude Max         -> the "claude" CLI (Claude Code)
+          - ChatGPT Plus/Pro   -> the "codex" CLI
+          - Gemini AI Pro      -> the "gemini" CLI
+          - Qwen (free)        -> the "qwen" CLI
+        Rounds routed this way cost $0 extra — your subscription covers them.
+        See README.md for install + sign-in commands per CLI.
+
+     b) An OpenRouter account and API key
+          - Sign up at https://openrouter.ai
+          - Click "Keys" in the top-right, copy a key, keep it secret
+          - You pay OpenRouter per call, but you get the full model list
+            (hundreds of models, with prices shown in the app).
 
 HOW TO START IT
 ---------------
@@ -48,20 +60,22 @@ KEEP THE TERMINAL WINDOW OPEN while you work. Closing it stops the program.
 
 FIRST TIME IN THE APP
 ---------------------
-  1. Click "Settings" (top-right).
-  2. Paste your OpenRouter API key, click Save.
-  3. Click "Refresh model list".
-  4. Pick a default Editor model (Claude Sonnet, GPT-5, etc.) — click
-     "Browse..." for a searchable list with prices.
-  5. Pick a different default Reviewer model. Save.
-  6. Click "← Books".
-  7. Click "+ New book". Pick your translated .docx and the English
+  1. Click "Settings" (top-right). Any AI CLIs signed in on this computer
+     show as "detected" with a green dot.
+  2. Using OpenRouter too (or instead)? Paste your API key, click Save,
+     then "Refresh model list".
+  3. Pick a default Editor model: choose a provider in the selector
+     (a detected CLI, or OpenRouter), then pick from the model dropdown —
+     it shows writing scores, context sizes, and prices.
+  4. Pick a different default Reviewer model the same way. Save.
+  5. Click "← Books".
+  6. Click "+ New book". Pick your translated .docx and the English
      original, choose languages, click "Create book".
-  8. Click any chapter row.
-  9. Click "Continue" — Translate sends one round (Editor → Reviewer →
+  7. Click any chapter row.
+  8. Click "Continue" — Translate sends one round (Editor → Reviewer →
      apply suggestions) and shows progress in the activity log.
-  10. When the chapter looks good, click "Done". A "final.docx" lands
-      in ~/.translate/<your-book>/chapters/chNN/
+  9. When the chapter looks good, click "Done". A "final.docx" lands
+     in ~/.translate/<your-book>/chapters/chNN/
 
 For step-by-step screenshots and explanations of every button, see the
 included README.md.
@@ -80,6 +94,7 @@ WHERE IS MY WORK SAVED?
 
 TROUBLESHOOTING
 ---------------
-  See README.md, section 14 ("Troubleshooting").
+  See README.md ("Troubleshooting") — including what "not found" means in
+  the provider list and the daily cap on Codex rounds.
 
 © 2026 GML Publishing LLC. Restricted MIT License — see LICENSE.txt.

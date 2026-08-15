@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { finalizeChapter, runEditorRound, runReviewerRound } from "../api/chapters";
-import type { ChapterMeta } from "../types/api";
 import { ApiError } from "../api/client";
 import BatchControls from "../components/BatchControls";
 import EnglishPane from "../components/EnglishPane";
+import ResizableColumns from "../components/ResizableColumns";
 import StatusBar, { type ActivityEntry } from "../components/StatusBar";
 import SuggestionsPane from "../components/SuggestionsPane";
 import TopBar from "../components/TopBar";
@@ -29,6 +29,7 @@ export default function ChapterRoute() {
   const [reviewerModel, setReviewerModel] = useState("");
   const [busy, setBusy] = useState(false);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [stream, setStream] = useState("");
   const [busySince, setBusySince] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
 
@@ -71,14 +72,32 @@ export default function ChapterRoute() {
 
   useEvents(
     useCallback((e) => {
-      if (e.type === "status") appendActivity(e.text, "status");
-      else if (e.type === "round_complete")
+      // The activity log shows everything (batch runs span chapters); the live
+      // stream pane shows only THIS chapter's current attempt.
+      // Narrow with `in` first: the "stop" variant of AppEvent has no
+      // `chapter` field, so `e.chapter` doesn't type-check without it.
+      const chapter = "chapter" in e ? e.chapter : undefined;
+      const mine = chapter === undefined || chapter === n;
+      if (e.type === "status") {
+        appendActivity(e.text, "status");
+        // Reset on a new send AND on a retry, so a failed attempt's partial
+        // output never concatenates with its retry's.
+        if (mine && (e.phase === "sent" || e.phase === "retry")) setStream("");
+      } else if (e.type === "token") {
+        if (!mine) return;
+        // Keep only a rolling tail so the buffer can't grow unbounded.
+        setStream((prev) => (prev + e.text).slice(-4000));
+      } else if (e.type === "round_complete") {
         appendActivity(
           `✓ Ch ${e.chapter ?? "?"} R${e.round} ${e.stage} complete`,
           "complete",
         );
-      else if (e.type === "error") appendActivity(`⚠ ${e.text}`, "error");
-    }, [appendActivity])
+        if (mine) setStream("");
+      } else if (e.type === "error") {
+        appendActivity(`⚠ ${e.text}`, "error");
+        if (mine) setStream("");
+      }
+    }, [appendActivity, n])
   );
 
   // Pull the most useful human-readable message out of an unknown error.
@@ -96,24 +115,16 @@ export default function ChapterRoute() {
     return err instanceof Error ? err.message : String(err);
   }
 
-  // A "round" is Editor → Reviewer → Editor (apply suggestions). The leading
-  // editor is skipped when the chapter already has an editor pass that hasn't
-  // been reviewed yet, so back-to-back Continues don't redo work.
-  function needsLeadingEditor(meta: ChapterMeta): boolean {
-    if (meta.current_round === 0) return true;
-    const last = meta.rounds.find((r) => r.n === meta.current_round);
-    return !last || last.reviewer_completed_at != null;
-  }
-
+  // A "round" is Editor → Reviewer → Editor (apply suggestions), always in that
+  // order. Continue never resumes a half-finished round from an earlier session:
+  // it drafts from the chapter's current text, so what you see is what just ran.
   const handleContinue = async () => {
     setBusy(true);
     setBusySince(Date.now());
     try {
-      if (needsLeadingEditor(chapter.meta!)) {
-        await runEditorRound(slug, n, editorModel);
-      }
-      await runReviewerRound(slug, n, reviewerModel);
       await runEditorRound(slug, n, editorModel);
+      await runReviewerRound(slug, n, reviewerModel);
+      await runEditorRound(slug, n, editorModel, undefined, true);
       await chapter.refresh();
     } catch (err) {
       appendActivity(`⚠ ${errorMessage(err)}`, "error");
@@ -155,7 +166,7 @@ export default function ChapterRoute() {
         onReviewerModelChange={setReviewerModel}
         onChapterChange={(newN) => navigate(`/book/${slug}/chapter/${newN}`)}
       />
-      <main className="grid grid-cols-3 overflow-hidden">
+      <ResizableColumns storageKey="translate-chapter-cols">
         <EnglishPane doc={chapter.enDoc} />
         <WorkingPane doc={chapter.workingDoc} prevDoc={chapter.prevDoc} roundN={chapter.meta.current_round} />
         <SuggestionsPane
@@ -164,7 +175,7 @@ export default function ChapterRoute() {
           chapterN={n}
           currentRound={chapter.meta.current_round}
         />
-      </main>
+      </ResizableColumns>
       <BatchControls
         chapters={book.chapters}
         currentN={n}
@@ -198,6 +209,7 @@ export default function ChapterRoute() {
       />
       <StatusBar
         activity={activity}
+        stream={stream}
         busy={busy}
         elapsed={elapsed}
         canFinalize={chapter.meta.current_round > 0 && chapter.meta.status !== "done"}

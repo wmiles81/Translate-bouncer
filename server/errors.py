@@ -1,7 +1,7 @@
 """Server error class hierarchy.
 
 Maps to the three error classes in the spec:
-- TransientError -> retried with backoff in OpenRouter calls
+- TransientError -> retried with backoff in provider calls
 - RecoverableError -> surfaced immediately, requires user action
 - ConfigurationError -> blocks the action, routes to settings
 """

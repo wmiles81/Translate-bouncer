@@ -94,3 +94,77 @@ def test_post_book_default_on_collision_is_new_session(translate_root: Path, fix
     slug2 = r2.json()["slug"]
     assert slug2 != slug1
     assert slug2.endswith("-2")
+
+
+def test_remove_book_hides_it_but_keeps_every_file(translate_root, fixtures_dir) -> None:
+    """Removal is list-only: the book disappears from /books, nothing is deleted."""
+    client = TestClient(create_app())
+    slug = client.post("/books", json={
+        "translated_path": str(fixtures_dir / "sample-fr-folder"),
+        "english_path": str(fixtures_dir / "sample-en-folder"),
+        "language_pair": {"from": "en", "to": "fr"},
+    }).json()["slug"]
+    assert slug in client.get("/books").json()
+    before = sorted(p.name for p in (translate_root / slug).iterdir())
+
+    r = client.delete(f"/books/{slug}")
+    assert r.status_code == 200
+    assert r.json()["removed"] is True
+
+    assert slug not in client.get("/books").json()          # gone from the list
+    assert (translate_root / slug).exists()                  # but still on disk
+    assert sorted(p.name for p in (translate_root / slug).iterdir()) == before
+    assert client.get(f"/books/{slug}").status_code == 200   # still reachable directly
+
+
+def test_remove_unknown_book_is_404(translate_root) -> None:
+    assert TestClient(create_app()).delete("/books/no-such-book").status_code == 404
+
+
+def test_restore_book_archives_edits_and_resets_state(translate_root, fixtures_dir, monkeypatch) -> None:
+    """Restore returns every chapter to the original translation, archiving (not
+    deleting) the rounds it had."""
+    from unittest.mock import AsyncMock
+
+    from server.routes import chapters as chapters_routes
+
+    client = TestClient(create_app())
+    slug = client.post("/books", json={
+        "translated_path": str(fixtures_dir / "sample-fr-folder"),
+        "english_path": str(fixtures_dir / "sample-en-folder"),
+        "language_pair": {"from": "en", "to": "fr"},
+    }).json()["slug"]
+
+    fake = AsyncMock()
+    fake.chat = AsyncMock(return_value=(
+        "[1]\nFR: # Chapitre 1\n\n[2]\nFR: Le matin où tout commença, il pleuvait encore.\n\n"
+        "[3]\nFR: Salut\n\n[4]\nFR: La main *froide*\n"
+    ))
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake)
+    client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
+    cdir = translate_root / slug / "chapters" / "ch01"
+    assert (cdir / "round-1-editor.json").exists()
+
+    r = client.post(f"/books/{slug}/restore")
+    assert r.status_code == 200
+    assert r.json()["files_archived"] >= 1
+
+    # Chapter is pristine again...
+    state = client.get(f"/books/{slug}/chapter/1/state").json()
+    assert state["current_round"] == 0
+    assert state["status"] == "untouched"
+    assert state["rounds"] == []
+    assert not (cdir / "round-1-editor.json").exists()
+    # ...but the work is archived, not gone, and the sources are untouched.
+    assert (cdir / "archive-1" / "round-1-editor.json").exists()
+    assert (translate_root / slug / "source-translated" / "ch01.json").exists()
+
+    # A second restore after new edits archives into archive-2 (lower n = older).
+    client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
+    client.post(f"/books/{slug}/restore")
+    assert (cdir / "archive-2" / "round-1-editor.json").exists()
+    assert (cdir / "archive-1" / "round-1-editor.json").exists()
+
+
+def test_restore_unknown_book_is_404(translate_root) -> None:
+    assert TestClient(create_app()).post("/books/nope/restore").status_code == 404

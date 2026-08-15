@@ -11,6 +11,7 @@ export class ApiError extends Error {
 interface RequestOpts {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
+  signal?: AbortSignal;
 }
 
 export async function request<T = unknown>(path: string, opts: RequestOpts = {}): Promise<T> {
@@ -18,6 +19,7 @@ export async function request<T = unknown>(path: string, opts: RequestOpts = {})
     method: opts.method ?? "GET",
     headers: opts.body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    signal: opts.signal,
   };
   const r = await fetch(path, init);
   if (!r.ok) {

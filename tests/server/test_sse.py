@@ -44,3 +44,21 @@ async def test_multiple_subscribers_each_get_events() -> None:
     bus.publish({"type": "stop"})
     await asyncio.gather(ta, tb)
     assert len(a) == len(b) == 2
+
+
+async def test_publish_drops_oldest_when_a_subscriber_stalls() -> None:
+    bus = EventBus()
+    received: list[dict] = []
+
+    async def slow_consumer():
+        async for evt in bus.subscribe(timeout=0.2):
+            received.append(evt)
+
+    task = asyncio.create_task(slow_consumer())
+    await asyncio.sleep(0.01)  # let subscribe() register its queue
+    for i in range(1100):  # exceed the 1000 bound
+        bus.publish({"type": "token", "i": i})
+    await task
+    assert len(received) == 1000
+    assert received[0]["i"] == 100  # oldest 100 were dropped
+    assert received[-1]["i"] == 1099  # newest survive

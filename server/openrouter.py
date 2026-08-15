@@ -45,6 +45,8 @@ class OpenRouterClient:
         user: str,
         retry_delays: Sequence[float] = DEFAULT_RETRY_DELAYS,
         on_retry=None,  # callable(attempt:int, total:int)
+        on_token=None,  # callable(str); OpenRouter path is non-streaming — called once
+        on_notice=None,  # callable(str); unused here, accepted for the shared chat() seam
     ) -> str:
         body = {
             "model": model,
@@ -52,9 +54,10 @@ class OpenRouterClient:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            # Generous cap so long chapter outputs and reviewer suggestion
-            # lists don't get truncated mid-response.
-            "max_tokens": 16384,
+            # No max_tokens: let the provider use the model's full output budget.
+            # A fixed cap starves long chapters — reasoning models spend it on
+            # thinking and return EMPTY content once it runs out (observed live:
+            # 167-paragraph chapter + 16384 cap -> null content, zero blocks).
         }
         total = len(retry_delays)
         last_exc: Optional[Exception] = None
@@ -83,7 +86,10 @@ class OpenRouterClient:
                     # safety-filter rejections; treat that as an empty string
                     # so downstream parsers can produce a clean error.
                     content = r.json()["choices"][0]["message"].get("content")
-                    return content if isinstance(content, str) else ""
+                    text = content if isinstance(content, str) else ""
+                    if on_token is not None and text:
+                        on_token(text)  # whole reply at once; keeps the live preview honest
+                    return text
                 except httpx.HTTPError as exc:
                     last_exc = TransientError(str(exc))
                     if attempt < total:

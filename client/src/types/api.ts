@@ -92,6 +92,7 @@ export interface IngestionConfig {
   fallback_patterns: string[];
 }
 export interface Settings {
+  // Optional: models outside the provider-CLI namespace route through OpenRouter.
   openrouter_api_key: string;
   default_models: DefaultModels;
   ingestion: IngestionConfig;
@@ -111,7 +112,7 @@ export interface PromptFile {
 
 // SSE event shape (server side publishes objects with `type` plus extras)
 export type Stage = "editor" | "reviewer";
-export type Phase = "sent" | "returned" | "retry";
+export type Phase = "sent" | "returned" | "retry" | "notice";
 export type AppEvent =
   | {
       type: "status";
@@ -125,13 +126,18 @@ export type AppEvent =
     }
   | { type: "round_complete"; round: number; stage: Stage; chapter?: number }
   | { type: "error"; text: string; chapter?: number; round?: number; stage?: Stage }
+  // Live model output streamed token-by-token while a round runs.
+  | { type: "token"; text: string; chapter?: number; round?: number; stage?: Stage }
   | { type: "stop" };
 
-// OpenRouter model metadata returned by GET /models.
-// Fields are optional because OpenRouter is inconsistent across models.
+// Model metadata returned by GET /models (catalog objects; fields optional).
 export interface Model {
   id: string;
   name?: string;
+  description?: string;
+  // "cli" = routed through a local provider CLI (subscription-covered); absent
+  // for OpenRouter catalog entries.
+  source?: "cli";
   created?: number;
   context_length?: number;
   pricing?: {
@@ -139,6 +145,13 @@ export interface Model {
     completion?: string;
   };
   supported_parameters?: string[];
+}
+
+// Provider CLI detection returned by GET /providers.
+export interface Provider {
+  id: string;
+  name: string;
+  detected: boolean;
 }
 
 // Parsed-doc shape used by panes (mirrors server/docx_io.py)

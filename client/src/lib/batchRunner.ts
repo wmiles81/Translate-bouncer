@@ -4,16 +4,10 @@ import {
   runEditorRound,
   runReviewerRound,
 } from "../api/chapters";
-import type { ChapterEntry, ChapterMeta } from "../types/api";
+import type { ChapterEntry } from "../types/api";
 
-// A "round" is Editor → Reviewer → Editor (apply suggestions). The leading
-// editor is skipped when the chapter already has an editor pass with no
-// reviewer yet, so consecutive rounds don't redo work.
-function needsLeadingEditor(meta: ChapterMeta): boolean {
-  if (meta.current_round === 0) return true;
-  const last = meta.rounds.find((r) => r.n === meta.current_round);
-  return !last || last.reviewer_completed_at != null;
-}
+// A "round" is Editor → Reviewer → Editor (apply suggestions), always in that
+// order, always starting from the chapter's current text.
 
 export interface BatchEvent {
   type: "chapter_start" | "round_start" | "round_done" | "chapter_done" | "error" | "done";
@@ -36,6 +30,9 @@ export interface BatchRunOptions {
   finalize: boolean;
   onProgress: (event: BatchEvent) => void;
   shouldStop: () => boolean;
+  // Aborting cancels the in-flight round immediately ("Stop now"); shouldStop
+  // alone finishes the current chapter first ("Stop after current chapter").
+  signal?: AbortSignal;
 }
 
 export interface BatchSummary {
@@ -49,8 +46,8 @@ export interface BatchSummary {
  * and optionally finalizing each. Errors on a chapter are reported via
  * onProgress but don't abort the batch — the next chapter still runs.
  *
- * `shouldStop` is checked between chapters and between rounds. An in-flight
- * HTTP call is not interrupted.
+ * `shouldStop` is checked between chapters and between rounds; `signal`
+ * additionally aborts the in-flight HTTP call for an immediate stop.
  */
 export async function runBatch(opts: BatchRunOptions): Promise<BatchSummary> {
   let completed = 0;
@@ -73,7 +70,7 @@ export async function runBatch(opts: BatchRunOptions): Promise<BatchSummary> {
 
     let chapterError = false;
     try {
-      let state = await getChapterState(opts.bookSlug, ch.n);
+      await getChapterState(opts.bookSlug, ch.n);  // 404s early if the chapter is missing
       for (let r = 1; r <= opts.roundsPerChapter; r++) {
         if (opts.shouldStop()) {
           stopped = true;
@@ -86,9 +83,11 @@ export async function runBatch(opts: BatchRunOptions): Promise<BatchSummary> {
           totalRounds: opts.roundsPerChapter,
           stage: "editor",
         });
-        if (needsLeadingEditor(state)) {
-          state = await runEditorRound(opts.bookSlug, ch.n, opts.editorModel);
-        }
+        // Every requested round starts with a fresh draft. Resuming a
+        // half-finished round from an earlier run instead made "Restore
+        // original" look broken: the batch reviewed a stale draft and the log
+        // opened at the Reviewer step.
+        await runEditorRound(opts.bookSlug, ch.n, opts.editorModel, opts.signal);
         opts.onProgress({
           type: "round_start",
           chapterN: ch.n,
@@ -96,9 +95,11 @@ export async function runBatch(opts: BatchRunOptions): Promise<BatchSummary> {
           totalRounds: opts.roundsPerChapter,
           stage: "reviewer",
         });
-        await runReviewerRound(opts.bookSlug, ch.n, opts.reviewerModel);
+        await runReviewerRound(opts.bookSlug, ch.n, opts.reviewerModel, opts.signal);
         // Apply reviewer suggestions via another editor pass.
-        state = await runEditorRound(opts.bookSlug, ch.n, opts.editorModel);
+        await runEditorRound(
+          opts.bookSlug, ch.n, opts.editorModel, opts.signal, true,
+        );
         opts.onProgress({
           type: "round_done",
           chapterN: ch.n,
@@ -112,9 +113,14 @@ export async function runBatch(opts: BatchRunOptions): Promise<BatchSummary> {
           chapterN: ch.n,
           stage: "finalize",
         });
-        await finalizeChapter(opts.bookSlug, ch.n);
+        await finalizeChapter(opts.bookSlug, ch.n, opts.signal);
       }
     } catch (e) {
+      if (opts.signal?.aborted || (e instanceof DOMException && e.name === "AbortError")) {
+        // "Stop now": not a chapter failure — end the batch quietly.
+        stopped = true;
+        break;
+      }
       chapterError = true;
       const detail = (e as { detail?: unknown })?.detail;
       let msg = e instanceof Error ? e.message : String(e);

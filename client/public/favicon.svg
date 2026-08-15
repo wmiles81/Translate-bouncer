@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Option 2: The round — editor and reviewer circling until it reads clean -->
+  <rect width="32" height="32" rx="7" fill="#4F46E5"/>
+  <g fill="none" stroke-width="3.6" stroke-linecap="round">
+    <path d="M8 20.5A9 9 0 0 1 21.5 8.6" stroke="#fff"/>
+    <path d="M24 11.5A9 9 0 0 1 10.5 23.4" stroke="#34D399"/>
+  </g>
+  <path d="M22.6 4.5l3.2 4.6-5.6.6z" fill="#fff"/>
+  <path d="M9.4 27.5l-3.2-4.6 5.6-.6z" fill="#34D399"/>
+</svg>

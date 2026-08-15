@@ -20,8 +20,12 @@ set -e
 cd "$(dirname "$0")/.."
 
 ROOT="$(pwd)"
-STAGE="$ROOT/release/Translate"
+# Stage on LOCAL disk, not the repo volume: the repo often lives on an SMB share,
+# where rm -rf/emptyDir race macOS AppleDouble files ("Directory not empty").
+STAGE_PARENT="$(mktemp -d "${TMPDIR:-/tmp}/translate-package.XXXXXX")"
+STAGE="$STAGE_PARENT/Translate"
 ZIP_OUT="$ROOT/release/Translate.zip"
+trap 'rm -rf "$STAGE_PARENT"' EXIT
 
 VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
 echo "Packaging Translate v${VERSION}"
@@ -32,8 +36,8 @@ echo "Building web UI..."
 
 # 2. Stage the release tree
 echo "Staging release tree at $STAGE ..."
-rm -rf "$ROOT/release"
-mkdir -p "$STAGE"
+for _i in 1 2 3 4 5; do rm -rf "$ROOT/release" 2>/dev/null && break; sleep 0.5; done
+mkdir -p "$ROOT/release" "$STAGE"
 
 # Python source (no .pyc, no __pycache__, no test files)
 mkdir -p "$STAGE/server"
@@ -43,9 +47,10 @@ mkdir -p "$STAGE/server"
 mkdir -p "$STAGE/client/dist"
 (cd client/dist && tar -cf - .) | (cd "$STAGE/client/dist" && tar -xf -)
 
-# Top-level metadata
+# Top-level metadata. The repo keeps README revisions side-by-side (README.md
+# is the v1 original); the zip ships the CURRENT revision under the plain name.
 cp pyproject.toml "$STAGE/"
-cp README.md "$STAGE/"
+cp README_v2.md "$STAGE/README.md"
 cp LICENSE.txt "$STAGE/"
 
 # Launchers and quick-start
@@ -58,9 +63,9 @@ cp "release-files/launch-translate.sh" "$STAGE/"
 chmod +x "$STAGE/Launch Translate.command"
 chmod +x "$STAGE/launch-translate.sh"
 
-# 3. Create the zip (preserves unix permissions)
+# 3. Create the zip (preserves unix permissions), zipping from the local stage
 echo "Creating $ZIP_OUT ..."
-(cd "$ROOT/release" && zip -qry "$ZIP_OUT" Translate)
+(cd "$STAGE_PARENT" && zip -qry "$ZIP_OUT" Translate)
 
 SIZE=$(du -h "$ZIP_OUT" | cut -f1)
 echo

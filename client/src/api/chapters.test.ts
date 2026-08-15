@@ -47,7 +47,26 @@ describe("chapters api", () => {
     const [url, init] = mock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/books/x/chapter/1/round/editor");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ model: "anthropic/claude-sonnet-4" });
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: "anthropic/claude-sonnet-4",
+      apply_suggestions: false, // a plain pass opens a new round
+    });
+  });
+
+  it("runEditorRound can apply this round's suggestions instead of opening a new round", async () => {
+    const mock = (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      okJson({
+        n: 1,
+        status: "in_progress",
+        current_round: 1,
+        models: { editor: "m", reviewer: "" },
+        prompts_used: { editor_version: "v1", reviewer_version: null },
+        rounds: [],
+      })
+    );
+    await runEditorRound("x", 1, "m", undefined, true);
+    const [, init] = mock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ model: "m", apply_suggestions: true });
   });
 
   it("runReviewerRound POST with model", async () => {

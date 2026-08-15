@@ -1,0 +1,415 @@
+{
+  "source": "https://github.com/EQ-bench/creative-writing-bench (elo_results.zip)",
+  "metric": "EQ-Bench Creative Writing v3 (Elo + rubric)",
+  "model_count": 102,
+  "scores": {
+    "google/gemini-2.0-flash-001": {
+      "elo": 1131.4,
+      "rubric": 15.83
+    },
+    "google/gemma-2-9b-it": {
+      "elo": 813.9,
+      "rubric": 11.33
+    },
+    "anthropic/claude-3.5-haiku-20241022": {
+      "elo": 1120.0,
+      "rubric": 12.9
+    },
+    "openai/gpt-4o-mini": {
+      "elo": 843.0,
+      "rubric": 14.28
+    },
+    "mistralai/mistral-small-3.1-24b-instruct-2503": {
+      "elo": 753.2,
+      "rubric": 10.49
+    },
+    "meta-llama/llama-3.1-8b-instruct": {
+      "elo": 737.9,
+      "rubric": 10.81
+    },
+    "meta-llama/llama-3.1-70b-instruct": {
+      "elo": 748.0,
+      "rubric": 10.7
+    },
+    "meta-llama/llama-3.1-405b-instruct": {
+      "elo": 860.4,
+      "rubric": 11.66
+    },
+    "google/gemma-3-27b-it": {
+      "elo": 1134.4,
+      "rubric": 16.59
+    },
+    "qwen/qwq-32b": {
+      "elo": 1140.2,
+      "rubric": 16.67
+    },
+    "openai/chatgpt-4o-latest": {
+      "elo": 1238.0,
+      "rubric": 16.57
+    },
+    "cohere/command-a": {
+      "elo": 1066.2,
+      "rubric": 16.12
+    },
+    "mistralai/mistral-nemo": {
+      "elo": 858.2,
+      "rubric": 12.73
+    },
+    "mistralai/mistral-small-24b-instruct-2501": {
+      "elo": 731.6,
+      "rubric": 10.24
+    },
+    "meta-llama/llama-3.2-3b-instruct": {
+      "elo": 624.8,
+      "rubric": 9.38
+    },
+    "google/gemma-3-4b-it": {
+      "elo": 1031.4,
+      "rubric": 15.97
+    },
+    "google/gemma-3-12b-it": {
+      "elo": 1053.1,
+      "rubric": 16.15
+    },
+    "sam-paech/Darkest-muse-v1": {
+      "elo": 1055.5,
+      "rubric": 16.15
+    },
+    "ifable/gemma-2-Ifable-9B": {
+      "elo": 1018.8,
+      "rubric": 15.56
+    },
+    "ToastyPigeon/Gemma-3-Starshine-12B": {
+      "elo": 834.9,
+      "rubric": 12.82
+    },
+    "allura-org/Gemma-3-Glitter-12B": {
+      "elo": 1073.9,
+      "rubric": 15.83
+    },
+    "liquid/lfm-7b": {
+      "elo": 767.0,
+      "rubric": 12.04
+    },
+    "anthropic/claude-3-haiku": {
+      "elo": 745.3,
+      "rubric": 11.66
+    },
+    "rekaai/reka-flash-3:free": {
+      "elo": 1133.6,
+      "rubric": 16.26
+    },
+    "meta-llama/llama-3.2-1b-instruct": {
+      "elo": 126.9,
+      "rubric": 7.44
+    },
+    "openai/gpt-3.5-turbo-0613": {
+      "elo": 431.1,
+      "rubric": 8.77
+    },
+    "openai/gpt-4-0314": {
+      "elo": 774.1,
+      "rubric": 11.99
+    },
+    "openrouter/quasar-alpha": {
+      "elo": 1263.2,
+      "rubric": 0.0
+    },
+    "mistralai/mistral-large-2411": {
+      "elo": 968.2,
+      "rubric": 13.64
+    },
+    "meta-llama/llama-4-scout": {
+      "elo": 793.8,
+      "rubric": 11.25
+    },
+    "meta-llama/llama-4-maverick": {
+      "elo": 836.9,
+      "rubric": 12.26
+    },
+    "x-ai/grok-3-beta": {
+      "elo": 1078.4,
+      "rubric": 16.83
+    },
+    "openrouter/optimus-alpha": {
+      "elo": 1271.9,
+      "rubric": 17.03
+    },
+    "mistralai/pixtral-large-2411": {
+      "elo": 963.2,
+      "rubric": 14.01
+    },
+    "openai/gpt-4.1-mini": {
+      "elo": 1111.3,
+      "rubric": 15.4
+    },
+    "openai/gpt-4.1": {
+      "elo": 1290.1,
+      "rubric": 16.95
+    },
+    "openai/gpt-4.1-nano": {
+      "elo": 923.4,
+      "rubric": 14.75
+    },
+    "google/gemini-2.5-flash-preview": {
+      "elo": 1134.0,
+      "rubric": 16.28
+    },
+    "thudm/glm-4-32b:free": {
+      "elo": 1027.2,
+      "rubric": 15.45
+    },
+    "qwen/qwen3-235b-a22b": {
+      "elo": 1251.8,
+      "rubric": 16.82
+    },
+    "deepseek/deepseek-r1": {
+      "elo": 1367.6,
+      "rubric": 16.94
+    },
+    "o3": {
+      "elo": 1606.9,
+      "rubric": 17.54
+    },
+    "anthropic/claude-opus-4": {
+      "elo": 1499.4,
+      "rubric": 16.77
+    },
+    "anthropic/claude-sonnet-4": {
+      "elo": 1382.5,
+      "rubric": 16.65
+    },
+    "deepseek/deepseek-r1-0528": {
+      "elo": 1261.0,
+      "rubric": 17.3
+    },
+    "deepseek/deepseek-chat-v3-0324": {
+      "elo": 1341.9,
+      "rubric": 16.32
+    },
+    "anthropic/claude-3.5-sonnet": {
+      "elo": 1316.2,
+      "rubric": 15.82
+    },
+    "anthropic/claude-3.7-sonnet": {
+      "elo": 1265.3,
+      "rubric": 16.61
+    },
+    "chatgpt-4o-latest": {
+      "elo": 1352.6,
+      "rubric": 17.04
+    },
+    "gemini-2.5-pro-exp-03-25": {
+      "elo": 1254.3,
+      "rubric": 17.26
+    },
+    "google/gemini-2.5-pro-preview": {
+      "elo": 1286.5,
+      "rubric": 17.18
+    },
+    "openai/gpt-4.5-preview": {
+      "elo": 1074.7,
+      "rubric": 16.29
+    },
+    "mistralai/mistral-small-3.2-24b-instruct-2506": {
+      "elo": 1092.2,
+      "rubric": 15.21
+    },
+    "openrouter/cypher-alpha:free": {
+      "elo": 773.5,
+      "rubric": 10.61
+    },
+    "moonshotai/kimi-k2": {
+      "elo": 1600.6,
+      "rubric": 17.66
+    },
+    "z-ai/glm-4.5": {
+      "elo": 1171.8,
+      "rubric": 16.94
+    },
+    "openrouter/horizon-alpha": {
+      "elo": 1530.9,
+      "rubric": 18.13
+    },
+    "openrouter/horizon-beta": {
+      "elo": 1516.3,
+      "rubric": 18.14
+    },
+    "openai/gpt-oss-120b": {
+      "elo": 943.8,
+      "rubric": 15.52
+    },
+    "openai/gpt-oss-20b": {
+      "elo": 703.6,
+      "rubric": 12.58
+    },
+    "gpt-5-2025-08-07": {
+      "elo": 1504.9,
+      "rubric": 18.09
+    },
+    "gpt-5-mini-2025-08-07": {
+      "elo": 1177.6,
+      "rubric": 17.5
+    },
+    "gpt-5-nano-2025-08-07": {
+      "elo": 762.7,
+      "rubric": 15.82
+    },
+    "mistralai/mistral-medium-3.1": {
+      "elo": 1339.9,
+      "rubric": 17.12
+    },
+    "hermes4": {
+      "elo": 1273.7,
+      "rubric": 17.26
+    },
+    "deepseek/deepseek-chat-v3.1": {
+      "elo": 1291.1,
+      "rubric": 16.14
+    },
+    "z-ai/glm-4.6": {
+      "elo": 1264.7,
+      "rubric": 16.08
+    },
+    "anthropic/claude-sonnet-4.5": {
+      "elo": 1632.0,
+      "rubric": 16.17
+    },
+    "kimi-k2-thinking": {
+      "elo": 1557.3,
+      "rubric": 16.47
+    },
+    "openrouter/sherlock-dash-alpha": {
+      "elo": 1221.8,
+      "rubric": 15.27
+    },
+    "google/gemini-3-pro-preview": {
+      "elo": 1370.9,
+      "rubric": 16.33
+    },
+    "x-ai/grok-4.1-fast": {
+      "elo": 1193.5,
+      "rubric": 15.57
+    },
+    "claude-opus-4-5-20251101": {
+      "elo": 1624.7,
+      "rubric": 16.38
+    },
+    "openai/gpt-5.2": {
+      "elo": 1654.2,
+      "rubric": 16.76
+    },
+    "mistralai/mistral-large-2512": {
+      "elo": 1272.4,
+      "rubric": 15.45
+    },
+    "Nanbeige/Nanbeige4-3B-Thinking-2511": {
+      "elo": 846.1,
+      "rubric": 9.21
+    },
+    "deepseek/deepseek-v3.2": {
+      "elo": 1381.4,
+      "rubric": 16.3
+    },
+    "deepseek/deepseek-v3.2-speciale": {
+      "elo": 1106.5,
+      "rubric": 14.6
+    },
+    "mistralai/mistral-small-creative": {
+      "elo": 1246.6,
+      "rubric": 15.42
+    },
+    "z-ai/glm-4.7-flash": {
+      "elo": 1080.7,
+      "rubric": 13.66
+    },
+    "z-ai/glm-4.7": {
+      "elo": 1275.0,
+      "rubric": 16.0
+    },
+    "claude-opus-4-6": {
+      "elo": 1811.0,
+      "rubric": 16.53
+    },
+    "openrouter/pony-alpha": {
+      "elo": 1562.1,
+      "rubric": 16.27
+    },
+    "z-ai/glm-5": {
+      "elo": 1523.7,
+      "rubric": 16.05
+    },
+    "minimax/minimax-m2.5": {
+      "elo": 1206.2,
+      "rubric": 15.05
+    },
+    "moonshotai/kimi-k2.5": {
+      "elo": 1457.3,
+      "rubric": 15.97
+    },
+    "qwen/qwen3.5-397b-a17b": {
+      "elo": 1335.7,
+      "rubric": 16.16
+    },
+    "claude-sonnet-4-6": {
+      "elo": 1835.9,
+      "rubric": 16.47
+    },
+    "google/gemini-3.1-pro-preview": {
+      "elo": 1351.6,
+      "rubric": 16.05
+    },
+    "openai/gpt-5.3-chat": {
+      "elo": 1653.4,
+      "rubric": 16.23
+    },
+    "openai/gpt-5.4": {
+      "elo": 1863.1,
+      "rubric": 16.98
+    },
+    "x-ai/grok-4.20-beta": {
+      "elo": 1542.9,
+      "rubric": 14.2
+    },
+    "openrouter/hunter-alpha": {
+      "elo": 1321.3,
+      "rubric": 16.14
+    },
+    "openai/gpt-5.4-mini": {
+      "elo": 1583.7,
+      "rubric": 16.54
+    },
+    "google/gemma-4-31b-it": {
+      "elo": 1242.9,
+      "rubric": 16.02
+    },
+    "google/gemma-4-26b-a4b-it": {
+      "elo": 1150.9,
+      "rubric": 16.02
+    },
+    "z-ai/glm-5.1": {
+      "elo": 1493.8,
+      "rubric": 16.24
+    },
+    "moonshotai/kimi-k2.6": {
+      "elo": 1661.2,
+      "rubric": 16.77
+    },
+    "claude-opus-4-7": {
+      "elo": 2050.8,
+      "rubric": 16.55
+    },
+    "deepseek/deepseek-v4-flash": {
+      "elo": 1421.4,
+      "rubric": 16.29
+    },
+    "deepseek/deepseek-v4-pro": {
+      "elo": 1446.1,
+      "rubric": 16.45
+    },
+    "openai/gpt-5.5": {
+      "elo": 1868.0,
+      "rubric": 17.11
+    }
+  }
+}

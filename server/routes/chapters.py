@@ -7,11 +7,17 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from server.config import Config, load_config
+from server.acp_providers import (
+    PROVIDER_LAUNCH,
+    AcpProviderClient,
+    cli_model_ids,
+    require_provider,
+    split_model,
+)
+from server.config import load_config
 from server.docx_io import ParsedDoc
 from server.errors import ConfigurationError, RecoverableError, TransientError
 from server.finalize import FinalizeError, finalize_chapter
-from server.openrouter import OpenRouterClient
 from server.paths import book_dir
 from server.prompts import PromptKind, load_prompts
 from server.rounds import (
@@ -37,12 +43,92 @@ router = APIRouter()
 
 class RoundRequest(BaseModel):
     model: str
+    # True = the in-round pass applying THIS round's reviewer suggestions; it
+    # writes round-N-editor-revised.* and does not start a new round.
+    apply_suggestions: bool = False
 
 
-def _make_client(cfg: Config) -> OpenRouterClient:
+def _make_client(model: str):
+    """Route by model id: anything the CLI catalog advertises -> that provider CLI
+    over ACP; anything else -> OpenRouter.
+
+    Membership in the live CLI catalog decides, not the id's shape: codex offers
+    real per-model ids from its own cache (codex/gpt-5.5), while OpenRouter's org
+    namespace collides with bare CLI names (OpenRouter serves qwen/qwen3-max).
+    """
+    provider, model_arg = split_model(model)
+    if model in cli_model_ids() or (provider in PROVIDER_LAUNCH and model_arg in ("", "default")):
+        require_provider(model)
+        return AcpProviderClient()
+    cfg = load_config()
     if not cfg.openrouter_api_key:
-        raise ConfigurationError("OpenRouter API key not configured")
+        raise ConfigurationError(
+            f"Model '{model}' routes through OpenRouter, but no OpenRouter API key is "
+            "configured. Add your key in Settings, or pick a provider-CLI model "
+            "(claude-code, codex, gemini, qwen)."
+        )
+    from server.openrouter import OpenRouterClient
+
     return OpenRouterClient(api_key=cfg.openrouter_api_key)
+
+
+class _TokenCoalescer:
+    """Buffers streamed chunks; publishes one token event per ~300 chars.
+
+    A 5000-token round would otherwise publish thousands of SSE events and force a
+    client re-render per token. Call ``flush()`` after the pass returns (success or
+    failure) so the tail is not lost.
+    """
+
+    def __init__(self, publish, threshold: int = 300) -> None:
+        self._publish = publish
+        self._threshold = threshold
+        self._buf: list[str] = []
+        self._size = 0
+
+    def __call__(self, chunk: str) -> None:
+        self._buf.append(chunk)
+        self._size += len(chunk)
+        if self._size >= self._threshold:
+            self.flush()
+
+    def flush(self) -> None:
+        if self._buf:
+            self._publish("".join(self._buf))
+            self._buf.clear()
+            self._size = 0
+
+    def reset(self) -> None:
+        """Drop any buffered chunks without publishing (a failed attempt's tail)."""
+        self._buf.clear()
+        self._size = 0
+
+
+def _round_callbacks(chapter: int, round_n: int, stage: str):
+    """on_retry / on_token / on_notice publishers shared by the editor and reviewer routes."""
+
+    coalescer = _TokenCoalescer(lambda text: EVENT_BUS.publish({
+        "type": "token", "chapter": chapter, "round": round_n, "stage": stage, "text": text,
+    }))
+
+    def on_retry(attempt: int, total: int) -> None:
+        # A failed attempt's buffered tail must never prefix the next attempt's
+        # first token event — the client resets its pane on this status event.
+        coalescer.reset()
+        EVENT_BUS.publish({
+            "type": "status", "chapter": chapter, "round": round_n, "stage": stage,
+            "phase": "retry",
+            "text": f"Ch {chapter} R{round_n} {stage.capitalize()} — retry {attempt}/{total}...",
+        })
+
+    def on_notice(text: str) -> None:
+        EVENT_BUS.publish({
+            "type": "status", "chapter": chapter, "round": round_n, "stage": stage,
+            "phase": "notice",
+            "text": f"Ch {chapter} R{round_n} {stage.capitalize()} — {text}",
+        })
+
+    return on_retry, coalescer, on_notice
 
 
 def _load_source(slug: str, n: int) -> tuple[ParsedDoc, ParsedDoc]:
@@ -52,13 +138,18 @@ def _load_source(slug: str, n: int) -> tuple[ParsedDoc, ParsedDoc]:
     return en, tr
 
 
+def _round_doc_path(slug: str, n: int, round_n: int) -> Path:
+    """Latest editor output for a round: the revised pass if it ran, else the draft."""
+    cdir = book_dir(slug) / "chapters" / f"ch{n:02d}"
+    revised = cdir / f"round-{round_n}-editor-revised.json"
+    return revised if revised.exists() else cdir / f"round-{round_n}-editor.json"
+
+
 def _current_target_doc(slug: str, n: int, current_round: int) -> ParsedDoc:
     bd = book_dir(slug)
     if current_round < 1:
         return ParsedDoc.model_validate_json((bd / "source-translated" / f"ch{n:02d}.json").read_text())
-    return ParsedDoc.model_validate_json(
-        (bd / "chapters" / f"ch{n:02d}" / f"round-{current_round}-editor.json").read_text()
-    )
+    return ParsedDoc.model_validate_json(_round_doc_path(slug, n, current_round).read_text())
 
 
 def _last_reviewer_suggestions(slug: str, n: int, round_n: int) -> Optional[list]:
@@ -82,15 +173,23 @@ def get_chapter_state(slug: str, n: int) -> dict:
 
 @router.post("/books/{slug}/chapter/{n}/round/editor")
 async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
-    cfg = load_config()
     try:
-        client = _make_client(cfg)
+        client = _make_client(req.model)
     except ConfigurationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
     bm = load_book_meta(slug)
     cm = load_chapter_meta(slug, n=n)
-    next_round = cm.current_round + 1
+    # Applying this round's suggestions stays IN the round; a plain editor pass
+    # opens the next one. One requested round therefore = one round number.
+    revising = req.apply_suggestions and cm.current_round >= 1
+    if revising and not _last_reviewer_suggestions(slug, n, cm.current_round):
+        raise HTTPException(
+            status_code=400,
+            detail=f"no reviewer suggestions to apply for round {cm.current_round}",
+        )
+    next_round = cm.current_round if revising else cm.current_round + 1
+    out_suffix = "-revised" if revising else ""
     en_doc, _ = _load_source(slug, n)
     target_doc = _current_target_doc(slug, n, cm.current_round)
     suggestions = _last_reviewer_suggestions(slug, n, cm.current_round)
@@ -116,6 +215,7 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
         "source": src_desc,
         "text": f"Ch {n} R{next_round} → Editor ({req.model}) · source: {src_desc}",
     })
+    on_retry, on_token, on_notice = _round_callbacks(n, next_round, "editor")
     try:
         await run_editor_pass(
             client=client,
@@ -129,23 +229,24 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
             editor_prompt_template=editor_template,
             prior_reviewer_suggestions=suggestions,
             model=req.model,
-            on_retry=lambda attempt, total: EVENT_BUS.publish({
-                "type": "status",
-                "chapter": n,
-                "round": next_round,
-                "stage": "editor",
-                "phase": "retry",
-                "text": f"Ch {n} R{next_round} Editor — retry {attempt}/{total}...",
-            }),
+            on_retry=on_retry,
+            on_token=on_token,
+            on_notice=on_notice,
+            out_suffix=out_suffix,
         )
     except RecoverableError as exc:
+        on_token.reset()
         EVENT_BUS.publish({"type": "error", "chapter": n, "round": next_round, "stage": "editor", "text": str(exc)})
         raise HTTPException(status_code=422, detail={"message": str(exc), "kind": "recoverable"})
     except TransientError as exc:
+        on_token.reset()
         EVENT_BUS.publish({"type": "error", "chapter": n, "round": next_round, "stage": "editor", "text": str(exc)})
         raise HTTPException(status_code=502, detail={"message": str(exc), "kind": "transient"})
     except ConfigurationError as exc:
+        on_token.reset()
         raise HTTPException(status_code=400, detail=str(exc))
+    finally:
+        on_token.flush()
     EVENT_BUS.publish({
         "type": "status",
         "chapter": n,
@@ -156,20 +257,25 @@ async def post_round_editor(slug: str, n: int, req: RoundRequest) -> dict:
     })
     EVENT_BUS.publish({"type": "round_complete", "round": next_round, "stage": "editor", "chapter": n})
 
-    cm.current_round = next_round
     cm.status = ChapterStatus.IN_PROGRESS
     cm.models.editor = req.model
     cm.prompts_used.editor_version = editor_prompt.current
-    cm.rounds.append(RoundEntry(n=next_round, editor_completed_at=now_iso()))
+    if revising:
+        for entry in cm.rounds:
+            if entry.n == next_round:
+                entry.revised_completed_at = now_iso()
+                break
+    else:
+        cm.current_round = next_round
+        cm.rounds.append(RoundEntry(n=next_round, editor_completed_at=now_iso()))
     save_chapter_meta(slug, cm)
     return cm.model_dump()
 
 
 @router.post("/books/{slug}/chapter/{n}/round/reviewer")
 async def post_round_reviewer(slug: str, n: int, req: RoundRequest) -> dict:
-    cfg = load_config()
     try:
-        client = _make_client(cfg)
+        client = _make_client(req.model)
     except ConfigurationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -194,6 +300,7 @@ async def post_round_reviewer(slug: str, n: int, req: RoundRequest) -> dict:
         "source": src_desc,
         "text": f"Ch {n} R{review_round} → Reviewer ({req.model}) · source: {src_desc}",
     })
+    on_retry, on_token, on_notice = _round_callbacks(n, review_round, "reviewer")
     try:
         result: ReviewerResult = await run_reviewer_pass(
             client=client,
@@ -206,20 +313,19 @@ async def post_round_reviewer(slug: str, n: int, req: RoundRequest) -> dict:
             target_code=bm.language_pair.to,
             reviewer_prompt_template=reviewer_template,
             model=req.model,
-            on_retry=lambda attempt, total: EVENT_BUS.publish({
-                "type": "status",
-                "chapter": n,
-                "round": review_round,
-                "stage": "reviewer",
-                "phase": "retry",
-                "text": f"Ch {n} R{review_round} Reviewer — retry {attempt}/{total}...",
-            }),
+            on_retry=on_retry,
+            on_token=on_token,
+            on_notice=on_notice,
         )
     except TransientError as exc:
+        on_token.reset()
         EVENT_BUS.publish({"type": "error", "chapter": n, "round": review_round, "stage": "reviewer", "text": str(exc)})
         raise HTTPException(status_code=502, detail={"message": str(exc), "kind": "transient"})
     except ConfigurationError as exc:
+        on_token.reset()
         raise HTTPException(status_code=400, detail=str(exc))
+    finally:
+        on_token.flush()
     n_sugg = len(result.suggestions) if hasattr(result, "suggestions") and result.suggestions else 0
     EVENT_BUS.publish({
         "type": "status",
@@ -248,6 +354,29 @@ def post_finalize(slug: str, n: int) -> dict:
     except FinalizeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return load_chapter_meta(slug, n=n).model_dump()
+
+
+@router.post("/books/{slug}/finalize-all")
+def post_finalize_all(slug: str) -> dict:
+    """Finalize every chapter that has at least one completed round.
+
+    Untouched chapters are skipped rather than failing the whole call, so this
+    is safe to press on a part-finished book.
+    """
+    try:
+        bm = load_book_meta(slug)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"book not found: {slug}")
+
+    finalized: list[int] = []
+    skipped: list[dict] = []
+    for entry in bm.chapters:
+        try:
+            finalize_chapter(slug=slug, chapter_n=entry.n)
+            finalized.append(entry.n)
+        except FinalizeError as exc:
+            skipped.append({"n": entry.n, "reason": str(exc)})
+    return {"slug": slug, "finalized": finalized, "skipped": skipped}
 
 
 @router.get("/books/{slug}/chapter/{n}/dialog")
@@ -302,12 +431,12 @@ def get_chapter_docs(slug: str, n: int) -> dict:
         working = ParsedDoc.model_validate_json(tr_path.read_text()).model_dump()
         previous = None
     else:
-        wp = bd / "chapters" / f"ch{n:02d}" / f"round-{cm.current_round}-editor.json"
+        wp = _round_doc_path(slug, n, cm.current_round)
         working = ParsedDoc.model_validate_json(wp.read_text()).model_dump()
         if cm.current_round == 1:
             previous = ParsedDoc.model_validate_json(tr_path.read_text()).model_dump()
         else:
-            pp = bd / "chapters" / f"ch{n:02d}" / f"round-{cm.current_round - 1}-editor.json"
+            pp = _round_doc_path(slug, n, cm.current_round - 1)
             previous = ParsedDoc.model_validate_json(pp.read_text()).model_dump()
 
     sp = bd / "chapters" / f"ch{n:02d}" / f"round-{cm.current_round}-reviewer.json"

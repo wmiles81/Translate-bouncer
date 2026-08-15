@@ -1,0 +1,85 @@
+TRANSLATE — QUICK START
+=======================
+
+WHAT IS THIS?
+  A program that walks your translated book through repeated AI editor +
+  reviewer rounds until it reads cleanly, then writes the polished chapters
+  back out as Word documents.
+
+WHO CAN USE IT?
+  Members of the Future Fiction Academy. See LICENSE.txt.
+
+WHAT YOU NEED FIRST
+-------------------
+  1. Python 3.11 or newer
+       - Mac:     download from https://www.python.org/downloads/
+       - Windows: download from https://www.python.org/downloads/
+                  (during install, tick "Add Python to PATH")
+       - Linux:   sudo apt install python3.11 python3.11-venv      (Debian/Ubuntu)
+                  sudo dnf install python3.11                       (Fedora)
+                  sudo pacman -S python                             (Arch)
+  2. An OpenRouter account and API key
+       - Sign up at https://openrouter.ai
+       - Click "Keys" in the top-right, copy a key, keep it secret
+       - You pay OpenRouter for whatever AI calls you make.
+         Pricing for every model is shown next to its name in the app.
+
+HOW TO START IT
+---------------
+
+  Mac:
+    Double-click "Launch Translate.command"
+      (the first time you do this, macOS may say "cannot be opened because
+       it is from an unidentified developer". If so: right-click the file
+       once, choose "Open", confirm. After that, double-click works.)
+
+  Windows:
+    Double-click "Launch Translate.bat"
+
+  Linux:
+    Open a terminal in this folder and run:
+      ./launch-translate.sh
+    (or right-click in your file manager and choose "Run in Terminal".)
+
+A Terminal/Console window opens, the first run installs dependencies
+(~30 seconds), and your default browser opens to the Translate app.
+
+KEEP THE TERMINAL WINDOW OPEN while you work. Closing it stops the program.
+
+FIRST TIME IN THE APP
+---------------------
+  1. Click "Settings" (top-right).
+  2. Paste your OpenRouter API key, click Save.
+  3. Click "Refresh model list".
+  4. Pick a default Editor model (Claude Sonnet, GPT-5, etc.) — click
+     "Browse..." for a searchable list with prices.
+  5. Pick a different default Reviewer model. Save.
+  6. Click "← Books".
+  7. Click "+ New book". Pick your translated .docx and the English
+     original, choose languages, click "Create book".
+  8. Click any chapter row.
+  9. Click "Continue" — Translate sends one round (Editor → Reviewer →
+     apply suggestions) and shows progress in the activity log.
+  10. When the chapter looks good, click "Done". A "final.docx" lands
+      in ~/.translate/<your-book>/chapters/chNN/
+
+For step-by-step screenshots and explanations of every button, see the
+included README.md.
+
+STOPPING IT
+-----------
+  Press Ctrl+C in the Terminal window, or close that window.
+
+WHERE IS MY WORK SAVED?
+-----------------------
+  Mac:     ~/.translate/<book-name>/
+  Windows: %USERPROFILE%\.translate\<book-name>\
+
+  Each chapter gets its own folder with every round saved separately and
+  a final.docx once you click Done.
+
+TROUBLESHOOTING
+---------------
+  See README.md, section 14 ("Troubleshooting").
+
+© 2026 GML Publishing LLC. Restricted MIT License — see LICENSE.txt.

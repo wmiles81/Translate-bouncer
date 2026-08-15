@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { finalizeAllChapters } from "../api/books";
 import ChapterListItem from "../components/ChapterListItem";
+import { useHelp } from "../components/HelpDrawer";
 import { useBook } from "../hooks/useBook";
 import BatchRunModal from "./BatchRunModal";
 
@@ -8,6 +10,7 @@ export default function BookViewRoute() {
   const { slug = "" } = useParams<{ slug: string }>();
   const { meta, loading, error, refresh } = useBook(slug);
   const [batchOpen, setBatchOpen] = useState(false);
+  const help = useHelp();
 
   return (
     <div data-testid="book-view-route" className="mx-auto max-w-3xl p-6">
@@ -17,6 +20,29 @@ export default function BookViewRoute() {
         </Link>
         <div className="flex gap-2">
           {meta && (
+            <>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!window.confirm(
+                  "Finalize every chapter that has at least one completed round?\n\n" +
+                  "Each gets a final.docx and is marked done. Chapters with no rounds are skipped."
+                )) return;
+                try {
+                  const out = await finalizeAllChapters(slug);
+                  refresh();
+                  window.alert(
+                    `Finalized ${out.finalized.length} chapter(s).` +
+                    (out.skipped.length ? `\nSkipped ${out.skipped.length} with no rounds yet.` : "")
+                  );
+                } catch (err) {
+                  window.alert(err instanceof Error ? err.message : String(err));
+                }
+              }}
+              className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
+            >
+              Finalize all
+            </button>
             <button
               type="button"
               onClick={() => setBatchOpen(true)}
@@ -24,12 +50,24 @@ export default function BookViewRoute() {
             >
               Batch run…
             </button>
+            </>
           )}
+          <button
+            type="button"
+            onClick={() => help.open("batch")}
+            title="Help"
+            aria-label="Help"
+            className="rounded border border-gray-300 px-2 py-1 text-sm leading-none hover:bg-gray-50"
+          >
+            ❓
+          </button>
           <Link
             to="/settings"
-            className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
+            title="Settings"
+            aria-label="Settings"
+            className="rounded border border-gray-300 px-2 py-1 text-sm leading-none hover:bg-gray-50"
           >
-            Settings
+            ⚙️
           </Link>
         </div>
       </header>

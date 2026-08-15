@@ -68,6 +68,6 @@ describe("api types", () => {
       default_models: { editor: "", reviewer: "" },
       ingestion: { heading_style: "Heading 1", fallback_patterns: [] },
     };
-    expect(s.openrouter_api_key).toBe("");
+    expect(s.default_models.editor).toBe("");
   });
 });

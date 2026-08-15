@@ -90,3 +90,21 @@ async def test_list_models_returns_full_objects(client: OpenRouterClient) -> Non
     assert models[0]["id"] == "anthropic/claude-sonnet-4"
     assert models[0]["context_length"] == 200000
     assert models[1]["id"] == "openai/gpt-5"
+
+
+@respx.mock
+async def test_chat_calls_on_token_once_with_the_full_reply(client: OpenRouterClient) -> None:
+    """OpenRouter is non-streaming; the shared chat() seam's on_token fires once so the
+    live preview still shows the reply."""
+    respx.post("https://openrouter.example/api/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={
+            "choices": [{"message": {"content": "bonjour"}}]
+        })
+    )
+    seen: List[str] = []
+    out = await client.chat(
+        model="z-ai/glm-4.7", system="s", user="u",
+        on_token=seen.append, on_notice=lambda _: None,
+    )
+    assert out == "bonjour"
+    assert seen == ["bonjour"]

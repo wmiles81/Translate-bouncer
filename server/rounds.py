@@ -5,9 +5,10 @@ import json
 from pathlib import Path
 from typing import Optional
 
+# ``client`` is any object with the shared chat() seam: AcpProviderClient or
+# server.openrouter.OpenRouterClient — routes pick one per model id.
 from server.docx_io import ParsedDoc, write_docx
 from server.errors import RecoverableError
-from server.openrouter import OpenRouterClient
 from server.paths import book_dir
 from server.payload import PayloadParseError, parse_target_lines, render_payload
 
@@ -72,7 +73,7 @@ def _chapter_dir(slug: str, n: int) -> Path:
 
 async def run_editor_pass(
     *,
-    client: OpenRouterClient,
+    client,
     slug: str,
     chapter_n: int,
     round_n: int,
@@ -84,8 +85,15 @@ async def run_editor_pass(
     prior_reviewer_suggestions: Optional[list],
     model: str,
     on_retry=None,
+    on_token=None,
+    on_notice=None,
+    out_suffix: str = "",
 ) -> ParsedDoc:
-    """Run the Editor pass and persist round-N-editor.{docx,json}."""
+    """Run the Editor pass and persist round-N-editor{suffix}.{docx,json,raw.txt}.
+
+    ``out_suffix`` is "-revised" for the in-round pass that applies this round's
+    reviewer suggestions, so the pre-review draft is never overwritten.
+    """
     payload = render_payload(en_doc, target_doc, source_code=source_code, target_code=target_code)
     user_msg = payload
     if prior_reviewer_suggestions:
@@ -96,12 +104,14 @@ async def run_editor_pass(
             + payload
         )
     system = render_editor_prompt(template=editor_prompt_template, target_code=target_code)
-    raw = await client.chat(model=model, system=system, user=user_msg, on_retry=on_retry)
+    raw = await client.chat(
+        model=model, system=system, user=user_msg, on_retry=on_retry, on_token=on_token, on_notice=on_notice
+    )
 
     cdir = _chapter_dir(slug, chapter_n)
     # Save the raw response immediately so a parse failure leaves something on
     # disk to debug. Removed/overwritten on success below.
-    (cdir / f"round-{round_n}-editor.raw.txt").write_text(raw)
+    (cdir / f"round-{round_n}-editor{out_suffix}.raw.txt").write_text(raw)
 
     try:
         edited = parse_target_lines(
@@ -114,8 +124,8 @@ async def run_editor_pass(
             f"{exc} (raw response saved to round-{round_n}-editor.raw.txt)"
         ) from exc
 
-    write_docx(edited, cdir / f"round-{round_n}-editor.docx")
-    (cdir / f"round-{round_n}-editor.json").write_text(edited.model_dump_json(indent=2))
+    write_docx(edited, cdir / f"round-{round_n}-editor{out_suffix}.docx")
+    (cdir / f"round-{round_n}-editor{out_suffix}.json").write_text(edited.model_dump_json(indent=2))
     return edited
 
 
@@ -202,7 +212,7 @@ def _try_parse_suggestions(raw: str) -> List[Suggestion]:
 
 async def run_reviewer_pass(
     *,
-    client: OpenRouterClient,
+    client,
     slug: str,
     chapter_n: int,
     round_n: int,
@@ -213,10 +223,14 @@ async def run_reviewer_pass(
     reviewer_prompt_template: str,
     model: str,
     on_retry=None,
+    on_token=None,
+    on_notice=None,
 ) -> ReviewerResult:
     payload = render_payload(en_doc, target_doc, source_code=source_code, target_code=target_code)
     system = render_reviewer_prompt(template=reviewer_prompt_template, target_code=target_code)
-    raw = await client.chat(model=model, system=system, user=payload, on_retry=on_retry)
+    raw = await client.chat(
+        model=model, system=system, user=payload, on_retry=on_retry, on_token=on_token, on_notice=on_notice
+    )
 
     suggestions = _try_parse_suggestions(raw)
     result = ReviewerResult(
