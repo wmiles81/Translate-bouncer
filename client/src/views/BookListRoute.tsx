@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { deleteBook, ingestBook, restoreBook } from "../api/books";
+import { useHelp } from "../components/HelpDrawer";
 import { useBooks } from "../hooks/useBooks";
 import NewBookModal from "./NewBookModal";
 
@@ -10,6 +11,7 @@ export default function BookListRoute() {
   const [ingestError, setIngestError] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const help = useHelp();
 
   return (
     <div data-testid="book-list-route" className="mx-auto max-w-2xl p-6">
@@ -23,14 +25,13 @@ export default function BookListRoute() {
           >
             + New book
           </button>
-          <a
-            href="/help/index.html?ctx=books"
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
+            onClick={() => help.open("books")}
             className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
           >
             Help
-          </a>
+          </button>
           <Link
             to="/settings"
             className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"

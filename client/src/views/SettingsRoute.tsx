@@ -2,12 +2,14 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import ModelPicker from "../components/ModelPicker";
 import PromptEditor from "../components/PromptEditor";
+import { useHelp } from "../components/HelpDrawer";
 import { useModels } from "../hooks/useModels";
 import { useProviders } from "../hooks/useProviders";
 import { useSettings } from "../hooks/useSettings";
 
 export default function SettingsRoute() {
   const { settings, save, loading, error } = useSettings();
+  const help = useHelp();
   const { models, refresh: refreshModels, error: modelsError, loading: modelsLoading } = useModels();
   const { providers, refresh: refreshProviders, loading: providersLoading } = useProviders();
 
@@ -64,14 +66,13 @@ export default function SettingsRoute() {
       <header className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Settings</h1>
         <div className="flex items-center gap-3">
-          <a
-            href="/help/index.html?ctx=settings"
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
+            onClick={() => help.open("settings")}
             className="text-sm text-blue-600 hover:underline"
           >
             Help
-          </a>
+          </button>
           <Link to="/" className="text-sm text-blue-600 hover:underline">← Books</Link>
         </div>
       </header>

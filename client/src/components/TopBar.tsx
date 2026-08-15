@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { ChapterEntry, Model } from "../types/api";
+import { useHelp } from "./HelpDrawer";
 import ModelPicker from "./ModelPicker";
 
 interface Props {
@@ -25,6 +26,7 @@ export default function TopBar({
   onReviewerModelChange,
   onChapterChange,
 }: Props) {
+  const help = useHelp();
   return (
     <header className="flex items-center gap-4 border-b border-gray-200 bg-white px-4 py-2">
       <Link to={`/book/${bookSlug}`} className="text-sm text-blue-600 hover:underline">
@@ -49,15 +51,14 @@ export default function TopBar({
       <div className="ml-auto flex items-center gap-4">
         <ModelPicker label="Editor" value={editorModel} models={models} onChange={onEditorModelChange} />
         <ModelPicker label="Reviewer" value={reviewerModel} models={models} onChange={onReviewerModelChange} />
-        <a
-          href="/help/index.html?ctx=chapter"
-          target="_blank"
-          rel="noreferrer"
+        <button
+          type="button"
+          onClick={() => help.open("chapter")}
           title="Open the Translate handbook"
           className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
         >
           ? Help
-        </a>
+        </button>
         <Link to="/settings" className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50">
           ⚙ Settings
         </Link>

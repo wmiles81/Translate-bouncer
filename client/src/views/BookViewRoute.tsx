@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import ChapterListItem from "../components/ChapterListItem";
+import { useHelp } from "../components/HelpDrawer";
 import { useBook } from "../hooks/useBook";
 import BatchRunModal from "./BatchRunModal";
 
@@ -8,6 +9,7 @@ export default function BookViewRoute() {
   const { slug = "" } = useParams<{ slug: string }>();
   const { meta, loading, error, refresh } = useBook(slug);
   const [batchOpen, setBatchOpen] = useState(false);
+  const help = useHelp();
 
   return (
     <div data-testid="book-view-route" className="mx-auto max-w-3xl p-6">
@@ -25,14 +27,13 @@ export default function BookViewRoute() {
               Batch run…
             </button>
           )}
-          <a
-            href="/help/index.html?ctx=batch"
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
+            onClick={() => help.open("batch")}
             className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
           >
             Help
-          </a>
+          </button>
           <Link
             to="/settings"
             className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
