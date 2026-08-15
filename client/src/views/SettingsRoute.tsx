@@ -69,9 +69,11 @@ export default function SettingsRoute() {
           <button
             type="button"
             onClick={() => help.open("settings")}
-            className="text-sm text-blue-600 hover:underline"
+            title="Help"
+            aria-label="Help"
+            className="rounded border border-gray-300 px-2 py-1 text-sm leading-none hover:bg-gray-50"
           >
-            Help
+            ❓
           </button>
           <Link to="/" className="text-sm text-blue-600 hover:underline">← Books</Link>
         </div>
