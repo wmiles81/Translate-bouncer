@@ -29,6 +29,11 @@ import type { Model } from "../types/api";
 
 const OPENROUTER = "openrouter";
 
+/** "Codex (ChatGPT Plus/Pro)" -> "Codex": the selector sits in a crowded row. */
+function shortName(name: string): string {
+  return name.replace(/\s*\(.*\)\s*$/, "").replace(/\s+CLI$/, "");
+}
+
 interface Props {
   label: string;
   value: string;
@@ -72,8 +77,12 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
   // first detected CLI, while the value is still empty.
   useEffect(() => {
     if (value) {
-      const cli = cliProviders.find((p) => value === `${p.id}/default`);
-      setProv(cli ? cli.id : OPENROUTER);
+      // Ask the catalog which route this model actually takes. Matching on the
+      // "<cli>/default" shape mis-filed every real per-model CLI id — codex
+      // offers codex/gpt-5.5 and friends, and they were showing as OpenRouter.
+      const row = rows.find((r) => r.id === value);
+      if (!row && rows.length === 0) return;  // catalog still loading
+      setProv(row ? (row.isCli ? row.provider : OPENROUTER) : OPENROUTER);
     } else if (openrouterAvailable) {
       setProv(OPENROUTER);
     } else {
@@ -126,7 +135,11 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
   };
 
   const current = rows.find((r) => r.id === value);
-  const buttonLabel = current ? current.name : value || "— select —";
+  // The top row is tight: a CLI's default model needs no restatement of the
+  // provider already shown in the selector beside it.
+  const buttonLabel = current
+    ? (current.isCli && current.id.endsWith("/default") ? "Default" : current.name)
+    : value || "— select —";
   const described = shown.find((r) => r.id === hoverId) ?? current;
 
   return (
@@ -136,11 +149,11 @@ export default function ModelPicker({ label, value, models, onChange }: Props) {
         aria-label={`${label} provider`}
         value={prov}
         onChange={(e) => setProv(e.target.value)}
-        className="max-w-[13rem] rounded border border-gray-300 bg-white px-1.5 py-1 text-sm"
+        className="w-auto max-w-[11rem] rounded border border-gray-300 bg-white px-1.5 py-1 text-sm"
       >
         {cliProviders.map((p) => (
           <option key={p.id} value={p.id} disabled={!p.detected}>
-            {p.detected ? `● ${p.name}` : `○ ${p.name} — not found`}
+            {p.detected ? `● ${shortName(p.name)}` : `○ ${shortName(p.name)} — not found`}
           </option>
         ))}
         <option value={OPENROUTER} disabled={!openrouterAvailable}>

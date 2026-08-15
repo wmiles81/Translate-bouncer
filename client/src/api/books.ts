@@ -30,3 +30,10 @@ export const restoreBook = (slug: string) =>
     `/books/${slug}/restore`,
     { method: "POST" },
   );
+
+/** Finalize every chapter that has a completed round. Untouched ones are skipped. */
+export const finalizeAllChapters = (slug: string) =>
+  request<{ slug: string; finalized: number[]; skipped: { n: number; reason: string }[] }>(
+    `/books/${slug}/finalize-all`,
+    { method: "POST" },
+  );

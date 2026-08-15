@@ -53,9 +53,11 @@ export default function StatusBar({
 
   return (
     <div className="border-t border-gray-200 bg-gray-50">
+      {/* Three lines, always scrollable: the log is a running commentary, not a
+          panel that should push the panes around as it grows. */}
       <div
         ref={logRef}
-        className="max-h-32 overflow-y-auto border-b border-gray-200 px-4 py-1 font-mono text-xs"
+        className="h-[3.6rem] overflow-y-auto border-b border-gray-200 px-4 py-1 font-mono text-xs leading-[1.1rem]"
       >
         {activity.length === 0 ? (
           <div className="text-gray-400">No activity yet.</div>

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { finalizeAllChapters } from "../api/books";
 import { runBatch, type BatchEvent } from "../lib/batchRunner";
 import type { ChapterEntry } from "../types/api";
 
@@ -33,6 +34,7 @@ export default function BatchControls({
   const [finalize, setFinalize] = useState(false);
   const [running, setRunning] = useState(false);
   const stopRef = useRef(false);
+  const [finalizing, setFinalizing] = useState(false);
 
   const selected = chapters
     .filter((c) => c.n >= fromN && c.n <= toN)
@@ -129,16 +131,47 @@ export default function BatchControls({
           Stop after current chapter
         </button>
       ) : (
+        <>
+        <button
+          type="button"
+          onClick={async () => {
+            // Writes final.docx for every chapter that has a round; chapters
+            // with no rounds are reported back, not treated as failures.
+            if (!window.confirm(
+              "Finalize every chapter that has at least one completed round?\n\n" +
+              "Each gets a final.docx and is marked done. Chapters with no rounds are skipped."
+            )) return;
+            setFinalizing(true);
+            try {
+              const out = await finalizeAllChapters(bookSlug);
+              onProgress({ type: "done" } as BatchEvent);
+              window.alert(
+                `Finalized ${out.finalized.length} chapter(s).` +
+                (out.skipped.length ? `\nSkipped ${out.skipped.length} with no rounds yet.` : "")
+              );
+              onBatchEnd();
+            } catch (err) {
+              window.alert(err instanceof Error ? err.message : String(err));
+            } finally {
+              setFinalizing(false);
+            }
+          }}
+          disabled={disabled || finalizing}
+          className="ml-auto rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {finalizing ? "Finalizing…" : "Finalize all"}
+        </button>
         <button
           type="button"
           onClick={handleRun}
           disabled={
             disabled || selected.length === 0 || !editorModel || !reviewerModel
           }
-          className="ml-auto rounded bg-blue-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+          className="rounded bg-blue-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
           Run batch
         </button>
+        </>
       )}
     </div>
   );

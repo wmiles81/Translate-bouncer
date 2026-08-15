@@ -4,6 +4,7 @@ import { finalizeChapter, runEditorRound, runReviewerRound } from "../api/chapte
 import { ApiError } from "../api/client";
 import BatchControls from "../components/BatchControls";
 import EnglishPane from "../components/EnglishPane";
+import ResizableColumns from "../components/ResizableColumns";
 import StatusBar, { type ActivityEntry } from "../components/StatusBar";
 import SuggestionsPane from "../components/SuggestionsPane";
 import TopBar from "../components/TopBar";
@@ -165,7 +166,7 @@ export default function ChapterRoute() {
         onReviewerModelChange={setReviewerModel}
         onChapterChange={(newN) => navigate(`/book/${slug}/chapter/${newN}`)}
       />
-      <main className="grid grid-cols-3 overflow-hidden">
+      <ResizableColumns storageKey="translate-chapter-cols">
         <EnglishPane doc={chapter.enDoc} />
         <WorkingPane doc={chapter.workingDoc} prevDoc={chapter.prevDoc} roundN={chapter.meta.current_round} />
         <SuggestionsPane
@@ -174,7 +175,7 @@ export default function ChapterRoute() {
           chapterN={n}
           currentRound={chapter.meta.current_round}
         />
-      </main>
+      </ResizableColumns>
       <BatchControls
         chapters={book.chapters}
         currentN={n}

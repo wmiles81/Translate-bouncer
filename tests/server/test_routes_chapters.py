@@ -281,3 +281,26 @@ def test_apply_without_suggestions_is_rejected(app_with_book, monkeypatch) -> No
     )
     assert r.status_code == 400
     assert "no reviewer suggestions" in r.json()["detail"]
+
+
+def test_finalize_all_finalizes_rounds_and_skips_untouched(app_with_book, monkeypatch) -> None:
+    """One press finalizes every chapter that has work; chapters with no rounds
+    are reported as skipped rather than failing the call."""
+    client, slug = app_with_book
+    fake = AsyncMock()
+    fake.chat = AsyncMock(return_value=_EDITOR_MOCK_RESPONSE)
+    monkeypatch.setattr(chapters_routes, "_make_client", lambda model: fake)
+    client.post(f"/books/{slug}/chapter/1/round/editor", json={"model": "ed"})
+
+    r = client.post(f"/books/{slug}/finalize-all")
+    assert r.status_code == 200
+    body = r.json()
+    assert 1 in body["finalized"]
+    assert all(s["n"] != 1 for s in body["skipped"])
+    assert client.get(f"/books/{slug}/chapter/1/state").json()["status"] == "done"
+    # A chapter that never ran a round is skipped with a reason, not an error.
+    assert any("no completed Editor round" in s["reason"] for s in body["skipped"])
+
+
+def test_finalize_all_unknown_book_is_404(translate_root) -> None:
+    assert TestClient(create_app()).post("/books/nope/finalize-all").status_code == 404

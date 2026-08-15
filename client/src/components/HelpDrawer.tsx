@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 /** Which screen asked for help; maps to a topic via help/manifest.json contextMap. */
 export type HelpContext = "books" | "chapter" | "batch" | "settings";
@@ -16,6 +16,10 @@ export function useHelp(): HelpApi {
 }
 
 const WIDE_KEY = "translate-help-wide";
+const WIDTH_KEY = "translate-help-width";
+const NARROW_PX = 560;
+const WIDE_PX = 1100;
+const MIN_PX = 320;
 
 // Storage is best-effort: private-mode browsers (and our test environment)
 // expose no localStorage, and the drawer must still open.
@@ -33,6 +37,21 @@ function writeWide(value: boolean): void {
     /* not persisted; the drawer still works this session */
   }
 }
+function readWidth(fallback: number): number {
+  try {
+    const raw = Number(globalThis.localStorage?.getItem(WIDTH_KEY));
+    return Number.isFinite(raw) && raw >= MIN_PX ? raw : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function writeWidth(px: number): void {
+  try {
+    globalThis.localStorage?.setItem(WIDTH_KEY, String(Math.round(px)));
+  } catch {
+    /* session-only */
+  }
+}
 
 /**
  * Hosts the help handbook in a right-hand drawer.
@@ -45,6 +64,31 @@ function writeWide(value: boolean): void {
 export function HelpProvider({ children }: { children: ReactNode }) {
   const [ctx, setCtx] = useState<HelpContext | null>(null);
   const [wide, setWide] = useState<boolean>(readWide);
+  // Dragging the drawer's left edge sets an exact width; the widen button just
+  // snaps between two sensible ones.
+  const [width, setWidth] = useState<number>(() => readWidth(readWide() ? WIDE_PX : NARROW_PX));
+  const dragging = useRef(false);
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (!dragging.current) return;
+      setWidth(Math.max(MIN_PX, Math.min(window.innerWidth - 80, window.innerWidth - e.clientX)));
+    };
+    const onUp = () => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      setWidth((w) => {
+        writeWidth(w);
+        return w;
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, []);
 
   const open = useCallback((next: HelpContext) => setCtx(next), []);
   const close = useCallback(() => setCtx(null), []);
@@ -60,8 +104,12 @@ export function HelpProvider({ children }: { children: ReactNode }) {
 
   const toggleWide = () => {
     setWide((w) => {
-      writeWide(!w);
-      return !w;
+      const next = !w;
+      writeWide(next);
+      const px = Math.min(next ? WIDE_PX : NARROW_PX, window.innerWidth - 80);
+      setWidth(px);
+      writeWidth(px);
+      return next;
     });
   };
 
@@ -76,9 +124,30 @@ export function HelpProvider({ children }: { children: ReactNode }) {
         className={`fixed inset-y-0 right-0 z-50 flex flex-col border-l border-gray-300 bg-white shadow-2xl transition-transform duration-200 ${
           ctx ? "translate-x-0" : "pointer-events-none translate-x-full"
         }`}
-        style={{ width: wide ? "min(1100px, 96vw)" : "min(560px, 94vw)" }}
+        style={{ width: `${width}px`, maxWidth: "98vw" }}
       >
-        <header className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize help"
+          tabIndex={0}
+          onPointerDown={(e) => {
+            (e.target as Element).setPointerCapture?.(e.pointerId);
+            dragging.current = true;
+          }}
+          onKeyDown={(e) => {
+            const step = e.shiftKey ? 120 : 24;
+            if (e.key === "ArrowLeft") {
+              setWidth((w) => { const n = Math.min(window.innerWidth - 80, w + step); writeWidth(n); return n; });
+            } else if (e.key === "ArrowRight") {
+              setWidth((w) => { const n = Math.max(MIN_PX, w - step); writeWidth(n); return n; });
+            } else return;
+            e.preventDefault();
+          }}
+          title="Drag to resize (arrow keys also work)"
+          className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize hover:bg-blue-400 focus:bg-blue-500 focus:outline-none"
+        />
+        <header className="flex items-center justify-between border-b border-gray-200 py-2 pl-4 pr-3">
           <span className="text-sm font-semibold">Translate Help</span>
           <div className="flex items-center gap-1">
             <button

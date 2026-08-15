@@ -356,6 +356,29 @@ def post_finalize(slug: str, n: int) -> dict:
     return load_chapter_meta(slug, n=n).model_dump()
 
 
+@router.post("/books/{slug}/finalize-all")
+def post_finalize_all(slug: str) -> dict:
+    """Finalize every chapter that has at least one completed round.
+
+    Untouched chapters are skipped rather than failing the whole call, so this
+    is safe to press on a part-finished book.
+    """
+    try:
+        bm = load_book_meta(slug)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"book not found: {slug}")
+
+    finalized: list[int] = []
+    skipped: list[dict] = []
+    for entry in bm.chapters:
+        try:
+            finalize_chapter(slug=slug, chapter_n=entry.n)
+            finalized.append(entry.n)
+        except FinalizeError as exc:
+            skipped.append({"n": entry.n, "reason": str(exc)})
+    return {"slug": slug, "finalized": finalized, "skipped": skipped}
+
+
 @router.get("/books/{slug}/chapter/{n}/dialog")
 def get_chapter_dialog(slug: str, n: int) -> dict:
     """Return per-round raw editor/reviewer exchanges for the dialog view."""

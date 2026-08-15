@@ -81,14 +81,14 @@ describe("ModelPicker (route selector + ModelRouter dropdown)", () => {
 
   afterEach(() => vi.restoreAllMocks());
 
-  it("lists the four CLIs (with detection) plus OpenRouter as the sources", async () => {
+  it("lists the four CLIs (with detection) plus OpenRouter, named briefly", async () => {
+    // The selector sits in a crowded toolbar: the subscription parenthetical
+    // ("Codex (ChatGPT Plus/Pro)") is dropped so the box fits its text.
     render(pickerWith(""));
     const sel = screen.getByLabelText("Editor provider");
-    await waitFor(() =>
-      expect(within(sel).getByText(/Claude Code \(Claude Max\)/)).toBeInTheDocument()
-    );
-    expect(within(sel).getByText(/Codex \(ChatGPT Plus\/Pro\)/)).toBeInTheDocument();
-    expect(within(sel).getByText(/Gemini CLI \(Gemini AI Pro\)/)).toBeInTheDocument();
+    await waitFor(() => expect(within(sel).getByText("● Claude Code")).toBeInTheDocument());
+    expect(within(sel).getByText("● Codex")).toBeInTheDocument();
+    expect(within(sel).getByText("● Gemini")).toBeInTheDocument();
     const qwen = within(sel).getByText(/Qwen Code — not found/) as HTMLOptionElement;
     expect(qwen.disabled).toBe(true); // undetected CLIs can't be picked
     expect(within(sel).getByText("● OpenRouter")).toBeInTheDocument();
@@ -134,6 +134,28 @@ describe("ModelPicker (route selector + ModelRouter dropdown)", () => {
     expect(names.join()).toContain("Claude Sonnet 4"); // actual vendor: anthropic
     expect(names.join()).toContain("Qwen: Qwen3 Max"); // qwen/... stays OpenRouter
     expect(names.join()).not.toContain("CLI default model");
+  });
+
+  it("shows a CLI default model as just 'Default' to save toolbar room", async () => {
+    render(pickerWith("claude-code/default"));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Editor" })).toHaveTextContent("Default")
+    );
+    // A real model still shows its name.
+    render(pickerWith("deepseek/deepseek-v4-pro"));
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: "Editor" })[1])
+        .toHaveTextContent("DeepSeek: DeepSeek V4 Pro")
+    );
+  });
+
+  it("files a per-model CLI id under its CLI, not OpenRouter", async () => {
+    // codex/gpt-5.5 is a real codex model; matching only "<cli>/default"
+    // mis-filed every one of them as OpenRouter.
+    render(pickerWith("codex/gpt-5.5"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Editor provider")).toHaveValue("codex")
+    );
   });
 
   it("follows the current value's route", async () => {
